@@ -7,6 +7,7 @@ import Dashboard from './views/Dashboard.vue'
 import Channels from './views/Channels.vue'
 import ChannelDetail from './views/ChannelDetail.vue'
 import Logs from './views/Logs.vue'
+import Settings from './views/Settings.vue'
 import ApiKeys from './views/ApiKeys.vue'
 import './style.css'
 
