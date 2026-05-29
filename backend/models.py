@@ -4,6 +4,17 @@ from sqlalchemy.sql import func
 from database import Base
 
 
+class AdminUser(Base):
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(100), unique=True, nullable=False)
+    hashed_password = Column(String(500), nullable=False)
+    must_change_password = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
 class Channel(Base):
     __tablename__ = "channels"
 

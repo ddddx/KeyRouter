@@ -1,5 +1,9 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-gray-100">
+  <!-- Login page has its own layout -->
+  <router-view v-if="$route.path === '/login'" />
+
+  <!-- Main layout with sidebar -->
+  <div v-else class="min-h-screen bg-gray-900 text-gray-100">
     <!-- Sidebar -->
     <aside class="fixed inset-y-0 left-0 w-64 bg-gray-800 border-r border-gray-700 flex flex-col z-30">
       <div class="p-6 border-b border-gray-700">
@@ -22,8 +26,18 @@
           <span class="text-sm font-medium">{{ item.label }}</span>
         </router-link>
       </nav>
-      <div class="p-4 border-t border-gray-700 text-xs text-gray-500">
-        v1.0 · OpenAI Compatible Proxy
+      <div class="p-4 border-t border-gray-700">
+        <!-- Logout button -->
+        <button
+          @click="handleLogout"
+          class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:bg-red-600/10 hover:text-red-400 transition-colors"
+        >
+          <span class="text-lg">🚪</span>
+          <span class="text-sm font-medium">Logout</span>
+        </button>
+        <div class="text-xs text-gray-500 mt-2">
+          v1.0 · OpenAI Compatible Proxy
+        </div>
       </div>
     </aside>
 
@@ -35,10 +49,20 @@
 </template>
 
 <script setup>
+import { useRouter } from 'vue-router'
+import { clearToken } from './api.js'
+
+const router = useRouter()
+
 const navItems = [
   { path: '/', icon: '📊', label: 'Dashboard', match: null },
   { path: '/channels', icon: '🌐', label: 'Channels', match: '/channels' },
   { path: '/logs', icon: '📋', label: 'Request Logs', match: '/logs' },
   { path: '/settings', icon: '⚙️', label: 'Settings', match: '/settings' },
 ]
+
+function handleLogout() {
+  clearToken()
+  router.push('/login')
+}
 </script>

@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import Login from './views/Login.vue'
 import Dashboard from './views/Dashboard.vue'
 import Channels from './views/Channels.vue'
 import ChannelDetail from './views/ChannelDetail.vue'
@@ -9,6 +10,7 @@ import Settings from './views/Settings.vue'
 import './style.css'
 
 const routes = [
+  { path: '/login', name: 'login', component: Login, meta: { noAuth: true } },
   { path: '/', name: 'dashboard', component: Dashboard },
   { path: '/channels', name: 'channels', component: Channels },
   { path: '/channels/:id', name: 'channel-detail', component: ChannelDetail },
@@ -19,6 +21,16 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+// Auth guard — redirect to login if no token
+router.beforeEach((to, from, next) => {
+  const token = localStorage.getItem('keyrouter_token')
+  if (to.meta.noAuth || token) {
+    next()
+  } else {
+    next('/login')
+  }
 })
 
 createApp(App).use(router).mount('#app')
