@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from database import get_session, get_db_session
-from models import Key, Channel, RequestLog
+from models import Key, Channel, RequestLog, ApiKey
 from key_manager import select_key
+from api_key_manager import validate_api_key, update_api_key_usage
 from config import MAX_RETRY_COUNT, ROUTING_TIMEOUT, PROXY_URL
 import httpx
 
@@ -77,7 +78,7 @@ async def stream_forward(
                 except Exception:
                     error_msg = error_body.decode()[:200]
                 await log_request(session, channel.id, key.id, model, 0, 0, elapsed_ms, status_code, False, error_msg, True, source_ip)
-                return None, error_body, status_code
+                return None, error_body, status_code, 0, 0
 
             # Collect chunks while streaming to client
             chunks_collected = []
@@ -110,7 +111,7 @@ async def stream_forward(
             await update_key_stats(session, key, True, elapsed_ms, prompt_tokens, completion_tokens)
             await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, True, None, True, source_ip)
 
-            return generate(), None, status_code
+            return generate(), None, status_code, prompt_tokens, completion_tokens
 
 
 async def non_stream_forward(
@@ -213,6 +214,14 @@ async def update_key_stats(
     await session.commit()
 
 
+def extract_api_key_from_request(request: Request) -> Optional[str]:
+    """Extract the external API key from Authorization header."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    return None
+
+
 async def proxy_request(request: Request, path: str, body: dict):
     """Core proxy logic with retry and key selection."""
     is_stream = body.get("stream", False)
@@ -220,13 +229,33 @@ async def proxy_request(request: Request, path: str, body: dict):
     source_ip = extract_source_ip(request)
     attempted_keys = []
 
+    # ─── Validate external API key ───
+    api_key_value = extract_api_key_from_request(request)
+    if not api_key_value:
+        raise HTTPException(status_code=401, detail="Authorization required. Provide a valid API key via Authorization: Bearer sk-keyrouter-xxx")
+
+    api_key_obj: ApiKey = None
+    bound_channel_id: Optional[int] = None
+
+    async with get_db_session() as auth_session:
+        api_key_obj = await validate_api_key(api_key_value, auth_session)
+        bound_channel_id = api_key_obj.channel_id  # None means auto-match by model
+
     for attempt in range(MAX_RETRY_COUNT):
         async with get_db_session() as session:
-            # Find enabled channels
-            channels_result = await session.execute(
-                select(Channel).where(Channel.enabled == True)
-            )
-            channels = channels_result.scalars().all()
+            # Determine which channels to use
+            if bound_channel_id is not None:
+                # ApiKey is bound to a specific channel
+                channel = await session.get(Channel, bound_channel_id)
+                if not channel or not channel.enabled:
+                    raise HTTPException(503, "Bound channel is not available")
+                channels = [channel]
+            else:
+                # Auto-match: find enabled channels (existing logic)
+                channels_result = await session.execute(
+                    select(Channel).where(Channel.enabled == True)
+                )
+                channels = channels_result.scalars().all()
 
             if not channels:
                 raise HTTPException(503, "No enabled channels available")
@@ -244,7 +273,7 @@ async def proxy_request(request: Request, path: str, body: dict):
                     if is_stream:
                         result = await stream_forward(channel, key, path, body, source_ip, session)
 
-                        generator, error_body, status_code = result
+                        generator, error_body, status_code, s_prompt_tokens, s_completion_tokens = result
                         if generator is None:
                             if status_code == 429:
                                 logger.warning(f"Key {key.id} rate limited (stream), retrying...")
@@ -267,6 +296,12 @@ async def proxy_request(request: Request, path: str, body: dict):
                                     err_json = {"error": {"message": error_body.decode()[:200]}}
                                 return JSONResponse(content=err_json, status_code=status_code)
 
+                        # Update ApiKey usage after successful stream
+                        async with get_db_session() as usage_session:
+                            ak_obj = await usage_session.get(ApiKey, api_key_obj.id)
+                            if ak_obj:
+                                await update_api_key_usage(ak_obj, s_prompt_tokens, s_completion_tokens, usage_session)
+
                         return StreamingResponse(
                             generator(),
                             media_type="text/event-stream",
@@ -275,7 +310,24 @@ async def proxy_request(request: Request, path: str, body: dict):
                     else:
                         resp, elapsed_ms, status_code = await non_stream_forward(channel, key, path, body, source_ip, session)
 
+                        # Extract tokens from response for ApiKey tracking
+                        _ns_prompt_tokens = 0
+                        _ns_completion_tokens = 0
                         if status_code < 400:
+                            try:
+                                resp_data = resp.json()
+                                usage_info = resp_data.get("usage", {})
+                                _ns_prompt_tokens = usage_info.get("prompt_tokens", 0)
+                                _ns_completion_tokens = usage_info.get("completion_tokens", 0)
+                            except Exception:
+                                pass
+
+                        if status_code < 400:
+                            # Update ApiKey usage after successful non-stream request
+                            async with get_db_session() as usage_session:
+                                ak_obj = await usage_session.get(ApiKey, api_key_obj.id)
+                                if ak_obj:
+                                    await update_api_key_usage(ak_obj, _ns_prompt_tokens, _ns_completion_tokens, usage_session)
                             return JSONResponse(content=resp.json(), status_code=status_code)
                         elif status_code == 429:
                             logger.warning(f"Key {key.id} rate limited, retrying...")
@@ -329,6 +381,14 @@ async def completions(request: Request):
 
 @router.get("/v1/models")
 async def list_models(request: Request):
+    # Validate external ApiKey
+    api_key_value = extract_api_key_from_request(request)
+    if not api_key_value:
+        raise HTTPException(status_code=401, detail="Authorization required. Provide a valid API key")
+
+    async with get_db_session() as auth_session:
+        await validate_api_key(api_key_value, auth_session)
+
     models_set = set()
     async with get_db_session() as session:
         channels_result = await session.execute(select(Channel).where(Channel.enabled == True))

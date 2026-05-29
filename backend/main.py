@@ -11,16 +11,16 @@ from channel_manager import router as channel_router
 from key_manager import router as key_router
 from router import router as proxy_router
 from admin_api import router as admin_router
+from api_key_manager import router as api_key_router
 from auth import router as auth_router
 from config import PORT, HOST
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
-# Paths that require JWT auth
-AUTH_REQUIRED_PREFIXES = ("/api/channels/", "/api/keys/", "/api/admin/", "/api/auth/change-password", "/api/auth/me")
+# Paths that require JWT auth (admin endpoints)
+AUTH_REQUIRED_PREFIXES = ("/api/channels/", "/api/keys/", "/api/admin/", "/api/auth/change-password", "/api/auth/me", "/api/api-keys/")
 # Paths that do NOT require auth
 AUTH_EXEMPT_PATHS = ("/api/auth/login", "/api/auth/status", "/api/auth/setup")
-PROXY_PREFIXES = ("/v1/",)
 
 
 @asynccontextmanager
@@ -34,15 +34,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="KeyRouter", description="API Key Smart Routing Proxy", lifespan=lifespan)
 
 
-# JWT auth middleware - check auth for protected API paths
+# JWT auth middleware - check auth for protected admin API paths
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Proxy endpoints - no auth needed
-    for prefix in PROXY_PREFIXES:
-        if path.startswith(prefix):
-            return await call_next(request)
+    # Proxy endpoints (/v1/) - auth is handled inside router (external ApiKey validation)
+    if path.startswith("/v1/"):
+        return await call_next(request)
 
     # Auth login/status/setup - no auth needed
     for exempt in AUTH_EXEMPT_PATHS:
@@ -53,7 +52,7 @@ async def auth_middleware(request: Request, call_next):
     if path == "/" or path.startswith("/assets") or path.startswith("/favicon") or path.startswith("/icons"):
         return await call_next(request)
 
-    # Check if path requires auth
+    # Check if path requires admin JWT auth
     needs_auth = False
     for prefix in AUTH_REQUIRED_PREFIXES:
         if path.startswith(prefix):
@@ -64,7 +63,7 @@ async def auth_middleware(request: Request, call_next):
         # Other paths (SPA fallback, etc) - no auth
         return await call_next(request)
 
-    # Verify JWT token
+    # Verify JWT token for admin endpoints
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
@@ -91,6 +90,7 @@ app.include_router(channel_router)
 app.include_router(key_router)
 app.include_router(proxy_router)
 app.include_router(admin_router)
+app.include_router(api_key_router)
 
 # Serve frontend static files
 static_dir = os.path.join(os.path.dirname(__file__), "static")

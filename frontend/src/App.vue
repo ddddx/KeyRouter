@@ -57,6 +57,7 @@ const router = useRouter()
 const navItems = [
   { path: '/', icon: '📊', label: 'Dashboard', match: null },
   { path: '/channels', icon: '🌐', label: 'Channels', match: '/channels' },
+  { path: '/api-keys', icon: '🔑', label: '对外 Key', match: '/api-keys' },
   { path: '/logs', icon: '📋', label: 'Request Logs', match: '/logs' },
   { path: '/settings', icon: '⚙️', label: 'Settings', match: '/settings' },
 ]

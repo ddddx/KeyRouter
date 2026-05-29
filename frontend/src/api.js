@@ -70,4 +70,11 @@ export const exportLogsCSV = (params) => api.get('/admin/logs/export/csv', { par
 // ─── Config ───
 export const getConfig = () => api.get('/admin/config').then(r => r.data)
 
+// ─── ApiKeys (External Keys) ───
+export const getApiKeys = (params) => api.get('/api-keys', { params }).then(r => r.data)
+export const createApiKey = (data) => api.post('/api-keys', data).then(r => r.data)
+export const batchCreateApiKeys = (data) => api.post('/api-keys/batch', data).then(r => r.data)
+export const updateApiKey = (id, data) => api.put(`/api-keys/${id}`, data).then(r => r.data)
+export const deleteApiKey = (id) => api.delete(`/api-keys/${id}`).then(r => r.data)
+
 export default api

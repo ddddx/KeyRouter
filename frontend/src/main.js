@@ -7,7 +7,7 @@ import Dashboard from './views/Dashboard.vue'
 import Channels from './views/Channels.vue'
 import ChannelDetail from './views/ChannelDetail.vue'
 import Logs from './views/Logs.vue'
-import Settings from './views/Settings.vue'
+import ApiKeys from './views/ApiKeys.vue'
 import './style.css'
 
 const routes = [
@@ -18,6 +18,7 @@ const routes = [
   { path: '/channels/:id', name: 'channel-detail', component: ChannelDetail },
   { path: '/logs', name: 'logs', component: Logs },
   { path: '/settings', name: 'settings', component: Settings },
+  { path: '/api-keys', name: 'api-keys', component: ApiKeys },
 ]
 
 const router = createRouter({

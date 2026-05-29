@@ -3,6 +3,9 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
 
+# Quota pricing coefficient: $0.002 per 1K tokens (approximate GPT-3.5 pricing)
+QUOTA_PRICING_COEFFICIENT = 0.002 / 1000  # per token
+
 
 class AdminUser(Base):
     __tablename__ = "admin_users"
@@ -28,6 +31,7 @@ class Channel(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     keys = relationship("Key", back_populates="channel", cascade="all, delete-orphan")
+    api_keys = relationship("ApiKey", back_populates="channel")
     request_logs = relationship("RequestLog", back_populates="channel")
 
 
@@ -54,6 +58,25 @@ class Key(Base):
 
     channel = relationship("Channel", back_populates="keys")
     request_logs = relationship("RequestLog", back_populates="key")
+
+
+class ApiKey(Base):
+    """External API key distributed to users (distinct from upstream Key model)."""
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=True)  # descriptive label
+    value = Column(String(500), unique=True, nullable=False)  # sk-keyrouter-xxx
+    channel_id = Column(Integer, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)  # optional binding
+    enabled = Column(Boolean, nullable=False, default=True)
+    rate_limit = Column(Integer, nullable=True)  # max requests per minute, null = unlimited
+    total_quota = Column(Float, nullable=True)  # total dollar-equivalent quota, null = unlimited
+    used_quota = Column(Float, nullable=False, default=0.0)  # consumed quota
+    total_requests = Column(Integer, nullable=False, default=0)  # total requests via this key
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=True)  # optional expiration
+
+    channel = relationship("Channel", back_populates="api_keys")
 
 
 class RequestLog(Base):

@@ -7,7 +7,7 @@ from sqlalchemy import select, func, desc, case, extract
 from typing import Optional
 from datetime import datetime, timedelta
 from database import get_session
-from models import Channel, Key, RequestLog
+from models import Channel, Key, RequestLog, ApiKey
 from config import HEALTH_CHECK_INTERVAL, HEALTH_CHECK_MAX_ERRORS, MAX_RETRY_COUNT, PORT, HOST, PROXY_URL, LOG_RETENTION_DAYS
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -126,6 +126,12 @@ async def dashboard_stats(session: AsyncSession = Depends(get_session)):
     # Daily trend (last 30 days)
     daily_trend = await _get_daily_trend(session, days=30)
 
+    # ApiKey stats
+    total_api_keys = await session.execute(select(func.count(ApiKey.id)))
+    active_api_keys = await session.execute(select(func.count(ApiKey.id)).where(ApiKey.enabled == True))
+    tak_val = total_api_keys.scalar() or 0
+    aak_val = active_api_keys.scalar() or 0
+
     return {
         "total_requests": tr_val,
         "success_requests": sr_val,
@@ -137,6 +143,8 @@ async def dashboard_stats(session: AsyncSession = Depends(get_session)):
         "total_keys": tk_val,
         "active_keys": ak_val,
         "error_keys": ek_val,
+        "total_api_keys": tak_val,
+        "active_api_keys": aak_val,
         "avg_response_time_ms": avg_rt_val,
         "total_tokens": total_tokens_val,
         "total_prompt_tokens": tp_val,
