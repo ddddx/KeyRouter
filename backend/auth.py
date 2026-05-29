@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -22,6 +22,11 @@ security = HTTPBearer()
 
 
 class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class SetupRequest(BaseModel):
     username: str
     password: str
 
@@ -46,6 +51,13 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
+async def _has_any_admin(session: AsyncSession) -> bool:
+    """Check if any admin user exists in the database."""
+    result = await session.execute(select(func.count(AdminUser.id)))
+    count = result.scalar() or 0
+    return count > 0
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     session: AsyncSession = Depends(get_session),
@@ -66,27 +78,51 @@ async def get_current_user(
     return user
 
 
-async def ensure_default_admin(session: AsyncSession):
-    """Create default admin user if no admin exists."""
-    result = await session.execute(select(AdminUser))
-    existing = result.scalar_one_or_none()
-    if existing is None:
-        hashed = get_password_hash("admin123")
-        admin = AdminUser(
-            username="admin",
-            hashed_password=hashed,
-            must_change_password=True,
-        )
-        session.add(admin)
-        await session.commit()
-        logger.info("Default admin user created (username=admin, password=admin123)")
-    return existing
+@router.post("/setup")
+async def setup_admin(req: SetupRequest, session: AsyncSession = Depends(get_session)):
+    """Initialize the first admin account. Only available when no admin exists."""
+    if await _has_any_admin(session):
+        raise HTTPException(status_code=403, detail="Admin account already exists. Setup is no longer available.")
+
+    if len(req.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Check username uniqueness
+    result = await session.execute(select(AdminUser).where(AdminUser.username == req.username))
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    hashed = get_password_hash(req.password)
+    admin = AdminUser(
+        username=req.username,
+        hashed_password=hashed,
+        must_change_password=False,
+    )
+    session.add(admin)
+    await session.commit()
+
+    # Auto-login after setup — return JWT token
+    access_token = create_access_token(data={"sub": admin.username})
+    logger.info(f"First admin user '{admin.username}' created via setup")
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "username": admin.username,
+        "message": "Admin account created successfully",
+    }
+
+
+@router.get("/status")
+async def auth_status(session: AsyncSession = Depends(get_session)):
+    """Check auth initialization status (for frontend routing)."""
+    has_admin = await _has_any_admin(session)
+    return {"auth_enabled": True, "has_admin": has_admin}
 
 
 @router.post("/login")
 async def login(req: LoginRequest, session: AsyncSession = Depends(get_session)):
-    await ensure_default_admin(session)
-
     result = await session.execute(select(AdminUser).where(AdminUser.username == req.username))
     user = result.scalar_one_or_none()
 
@@ -97,7 +133,6 @@ async def login(req: LoginRequest, session: AsyncSession = Depends(get_session))
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "must_change_password": user.must_change_password,
         "username": user.username,
     }
 
@@ -119,13 +154,11 @@ async def change_password(
     session.add(current_user)
     await session.commit()
 
-    # Return a new token after password change
     access_token = create_access_token(data={"sub": current_user.username})
     return {
         "message": "Password changed successfully",
         "access_token": access_token,
         "token_type": "bearer",
-        "must_change_password": False,
     }
 
 
@@ -135,10 +168,3 @@ async def get_me(current_user: AdminUser = Depends(get_current_user)):
         "username": current_user.username,
         "must_change_password": current_user.must_change_password,
     }
-
-
-@router.get("/status")
-async def auth_status(session: AsyncSession = Depends(get_session)):
-    """Check if auth is initialized (for frontend to know if login is needed)."""
-    admin = await ensure_default_admin(session)
-    return {"auth_enabled": True, "has_admin": True}

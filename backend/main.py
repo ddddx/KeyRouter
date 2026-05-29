@@ -1,10 +1,9 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.security import HTTPBearer
 from database import init_db
 from health_check import start_health_checker
 from log_cleanup import start_log_cleanup
@@ -12,26 +11,21 @@ from channel_manager import router as channel_router
 from key_manager import router as key_router
 from router import router as proxy_router
 from admin_api import router as admin_router
-from auth import router as auth_router, get_current_user, ensure_default_admin
+from auth import router as auth_router
 from config import PORT, HOST
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_session, get_db_session
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
 # Paths that require JWT auth
 AUTH_REQUIRED_PREFIXES = ("/api/channels/", "/api/keys/", "/api/admin/", "/api/auth/change-password", "/api/auth/me")
-# Paths that do NOT require auth (proxy endpoints + auth login/status)
-AUTH_EXEMPT_PATHS = ("/api/auth/login", "/api/auth/status")
+# Paths that do NOT require auth
+AUTH_EXEMPT_PATHS = ("/api/auth/login", "/api/auth/status", "/api/auth/setup")
 PROXY_PREFIXES = ("/v1/",)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
-    # Ensure default admin exists on startup
-    async with get_db_session() as session:
-        await ensure_default_admin(session)
     await start_health_checker()
     await start_log_cleanup()
     yield
@@ -50,7 +44,7 @@ async def auth_middleware(request: Request, call_next):
         if path.startswith(prefix):
             return await call_next(request)
 
-    # Auth login/status - no auth needed
+    # Auth login/status/setup - no auth needed
     for exempt in AUTH_EXEMPT_PATHS:
         if path == exempt:
             return await call_next(request)

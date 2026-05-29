@@ -36,6 +36,7 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
 export const isLoggedIn = () => !!getToken()
 
 export const login = (username, password) => api.post('/auth/login', { username, password }).then(r => r.data)
+export const setupAdmin = (username, password) => api.post('/auth/setup', { username, password }).then(r => r.data)
 export const changePassword = (old_password, new_password) => api.post('/auth/change-password', { old_password, new_password }).then(r => r.data)
 export const getMe = () => api.get('/auth/me').then(r => r.data)
 export const getAuthStatus = () => api.get('/auth/status').then(r => r.data)

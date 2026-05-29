@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
+import Setup from './views/Setup.vue'
 import Login from './views/Login.vue'
 import Dashboard from './views/Dashboard.vue'
 import Channels from './views/Channels.vue'
@@ -10,6 +11,7 @@ import Settings from './views/Settings.vue'
 import './style.css'
 
 const routes = [
+  { path: '/setup', name: 'setup', component: Setup, meta: { noAuth: true } },
   { path: '/login', name: 'login', component: Login, meta: { noAuth: true } },
   { path: '/', name: 'dashboard', component: Dashboard },
   { path: '/channels', name: 'channels', component: Channels },
@@ -23,12 +25,33 @@ const router = createRouter({
   routes,
 })
 
-// Auth guard — redirect to login if no token
-router.beforeEach((to, from, next) => {
+// Auth guard — redirect based on auth state
+router.beforeEach(async (to, from, next) => {
   const token = localStorage.getItem('keyrouter_token')
-  if (to.meta.noAuth || token) {
+
+  if (to.meta.noAuth) {
+    // Setup/login pages don't need auth
     next()
-  } else {
+    return
+  }
+
+  if (token) {
+    // Has token, allow access
+    next()
+    return
+  }
+
+  // No token — check if setup is needed first
+  try {
+    const res = await fetch('/api/auth/status')
+    const status = await res.json()
+    if (!status.has_admin) {
+      next('/setup')
+    } else {
+      next('/login')
+    }
+  } catch {
+    // Network error — fallback to login
     next('/login')
   }
 })

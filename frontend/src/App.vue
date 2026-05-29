@@ -1,6 +1,6 @@
 <template>
-  <!-- Login page has its own layout -->
-  <router-view v-if="$route.path === '/login'" />
+  <!-- Login/setup pages have their own layout -->
+  <router-view v-if="$route.path === '/login' || $route.path === '/setup'" />
 
   <!-- Main layout with sidebar -->
   <div v-else class="min-h-screen bg-gray-900 text-gray-100">
