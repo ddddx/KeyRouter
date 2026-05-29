@@ -57,10 +57,47 @@
       </div>
     </div>
 
-    <!-- Keys table -->
+    <!-- Channel Stats -->
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6" v-if="channelStats">
+      <h3 class="text-lg font-semibold mb-3">Channel Statistics</h3>
+      <div class="grid grid-cols-6 gap-4 mb-4">
+        <div>
+          <div class="text-gray-400 text-xs">Requests</div>
+          <div class="text-white font-bold">{{ channelStats.total_requests }}</div>
+        </div>
+        <div>
+          <div class="text-gray-400 text-xs">Success</div>
+          <div class="text-green-400 font-bold">{{ channelStats.success_requests }}</div>
+        </div>
+        <div>
+          <div class="text-gray-400 text-xs">Failed</div>
+          <div class="text-red-400 font-bold">{{ channelStats.failed_requests }}</div>
+        </div>
+        <div>
+          <div class="text-gray-400 text-xs">Success Rate</div>
+          <div class="text-white font-bold">{{ channelStats.success_rate }}%</div>
+        </div>
+        <div>
+          <div class="text-gray-400 text-xs">Avg RT</div>
+          <div class="text-indigo-400 font-bold">{{ channelStats.avg_response_time_ms }}ms</div>
+        </div>
+        <div>
+          <div class="text-gray-400 text-xs">Tokens</div>
+          <div class="text-yellow-400 font-bold">{{ channelStats.total_tokens }}</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <div>
+          <div class="text-gray-400 text-xs">Key Count</div>
+          <div class="text-white">{{ channelStats.key_count }} ({{ channelStats.active_key_count }} active, {{ channelStats.error_key_count }} error)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Key Statistics Table -->
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold">Keys</h3>
+        <h3 class="text-lg font-semibold">Key Statistics</h3>
         <div class="flex gap-3">
           <button @click="showBatchAdd = true" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors">
             + Batch Add Keys
@@ -80,28 +117,30 @@
             <tr class="text-gray-400 border-b border-gray-700">
               <th class="py-2 px-3 text-left">Key</th>
               <th class="py-2 px-3 text-left">Status</th>
-              <th class="py-2 px-3 text-left">Weight</th>
               <th class="py-2 px-3 text-left">Requests</th>
               <th class="py-2 px-3 text-left">Success</th>
+              <th class="py-2 px-3 text-left">Failed</th>
+              <th class="py-2 px-3 text-left">Rate</th>
               <th class="py-2 px-3 text-left">Avg RT</th>
-              <th class="py-2 px-3 text-left">Errors</th>
+              <th class="py-2 px-3 text-left">Tokens</th>
               <th class="py-2 px-3 text-left">Last Used</th>
               <th class="py-2 px-3 text-left">Actions</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="k in keys" class="border-b border-gray-700/50 hover:bg-gray-700/30">
-              <td class="py-2 px-3 text-gray-300 font-mono text-xs">{{ maskKey(k.value) }}</td>
+              <td class="py-2 px-3 text-gray-300 font-mono text-xs">{{ k.value_masked }}</td>
               <td class="py-2 px-3">
                 <span :class="statusClass(k.status)" class="px-2 py-0.5 rounded-full text-xs">{{ k.status }}</span>
               </td>
-              <td class="py-2 px-3 text-gray-300">{{ k.weight }}</td>
               <td class="py-2 px-3 text-gray-300">{{ k.total_requests }}</td>
-              <td class="py-2 px-3 text-gray-300">{{ k.success_requests }}</td>
-              <td class="py-2 px-3 text-gray-300">{{ k.avg_response_time.toFixed(2) }}s</td>
+              <td class="py-2 px-3 text-green-400">{{ k.success_requests }}</td>
+              <td class="py-2 px-3 text-red-400">{{ k.failed_requests }}</td>
               <td class="py-2 px-3">
-                <span :class="k.error_count > 0 ? 'text-red-400' : 'text-gray-400'">{{ k.error_count }}</span>
+                <span :class="k.success_rate >= 95 ? 'text-green-400' : k.success_rate >= 80 ? 'text-yellow-400' : 'text-red-400'">{{ k.success_rate }}%</span>
               </td>
+              <td class="py-2 px-3 text-gray-300">{{ k.avg_response_time_ms }}ms</td>
+              <td class="py-2 px-3 text-yellow-400">{{ k.total_tokens }}</td>
               <td class="py-2 px-3 text-gray-400 text-xs">{{ formatTime(k.last_used) }}</td>
               <td class="py-2 px-3">
                 <div class="flex gap-2">
@@ -132,7 +171,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getChannel, updateChannel, getKeys, batchCreateKeys, updateKey, deleteKey as deleteKeyApi, batchDeleteKeys, getChannelStats } from '../api.js'
 
@@ -140,15 +179,10 @@ const route = useRoute()
 const channelId = parseInt(route.params.id)
 const channel = ref({ name: '', base_url: '', strategy: '', enabled: true, weight: 1, key_count: 0, active_key_count: 0 })
 const keys = ref([])
+const channelStats = ref(null)
 const editData = ref({ strategy: '', weight: 1, enabled: true })
 const showBatchAdd = ref(false)
 const batchKeys = ref('')
-
-function maskKey(val) {
-  if (!val) return ''
-  if (val.length <= 8) return val
-  return val.substring(0, 6) + '...' + val.substring(val.length - 4)
-}
 
 function statusClass(status) {
   if (status === 'active') return 'bg-green-600/20 text-green-400'
@@ -167,6 +201,11 @@ async function refresh() {
   editData.value.weight = channel.value.weight
   editData.value.enabled = channel.value.enabled
   keys.value = await getKeys({ channel_id: channelId })
+  try {
+    channelStats.value = await getChannelStats(channelId)
+  } catch (e) {
+    channelStats.value = null
+  }
 }
 
 async function saveChannel() {

@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from database import get_session
+from database import get_session, get_db_session
 from models import Key, Channel, RequestLog
 from key_manager import select_key
 from config import MAX_RETRY_COUNT, ROUTING_TIMEOUT, PROXY_URL
@@ -19,12 +19,34 @@ logger = logging.getLogger("router")
 router = APIRouter(tags=["proxy"])
 
 
+def mask_key_value(val: str) -> str:
+    """Mask key: show first 8 chars + ***."""
+    if not val:
+        return ""
+    if len(val) <= 8:
+        return val
+    return val[:8] + "***"
+
+
+def extract_source_ip(request: Request) -> str:
+    """Extract client IP from request headers."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip", "")
+    if real_ip:
+        return real_ip.strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
 async def stream_forward(
     channel: Channel,
     key: Key,
     path: str,
     body: dict,
-    request_headers: dict,
+    source_ip: str,
     session: AsyncSession,
 ):
     """Forward streaming request and yield chunks in real-time."""
@@ -46,17 +68,15 @@ async def stream_forward(
             status_code = resp.status_code
 
             if status_code >= 400:
-                # Read full error body for non-streaming errors
                 error_body = await resp.aread()
-                elapsed = time.time() - start_time
-                await update_key_stats(session, key, False, elapsed)
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                await update_key_stats(session, key, False, elapsed_ms)
                 try:
                     error_data = json.loads(error_body)
                     error_msg = error_data.get("error", {}).get("message", str(error_body[:200]))
                 except Exception:
                     error_msg = error_body.decode()[:200]
-                await log_request(session, channel.id, key.id, model, 0, 0, elapsed, status_code, error_msg, True)
-                # Return error as JSON, not stream
+                await log_request(session, channel.id, key.id, model, 0, 0, elapsed_ms, status_code, False, error_msg, True, source_ip)
                 return None, error_body, status_code
 
             # Collect chunks while streaming to client
@@ -81,14 +101,14 @@ async def stream_forward(
                 except Exception:
                     pass
 
-            elapsed = time.time() - start_time
+            elapsed_ms = int((time.time() - start_time) * 1000)
 
             async def generate():
                 for c in chunks_collected:
                     yield c
 
-            await update_key_stats(session, key, True, elapsed)
-            await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed, status_code, None, True)
+            await update_key_stats(session, key, True, elapsed_ms, prompt_tokens, completion_tokens)
+            await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, True, None, True, source_ip)
 
             return generate(), None, status_code
 
@@ -98,7 +118,7 @@ async def non_stream_forward(
     key: Key,
     path: str,
     body: dict,
-    request_headers: dict,
+    source_ip: str,
     session: AsyncSession,
 ):
     """Forward non-streaming request."""
@@ -113,7 +133,7 @@ async def non_stream_forward(
 
     async with httpx.AsyncClient(timeout=ROUTING_TIMEOUT, proxy=proxy) as client:
         resp = await client.post(url, json=body, headers=headers)
-        elapsed = time.time() - start_time
+        elapsed_ms = int((time.time() - start_time) * 1000)
         status_code = resp.status_code
         success = status_code < 400
 
@@ -131,10 +151,10 @@ async def non_stream_forward(
         except Exception:
             error_msg = resp.text[:500] if status_code >= 400 else None
 
-        await update_key_stats(session, key, success, elapsed)
-        await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed, status_code, error_msg, False)
+        await update_key_stats(session, key, success, elapsed_ms, prompt_tokens, completion_tokens)
+        await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, success, error_msg, False, source_ip)
 
-        return resp, elapsed, status_code
+        return resp, elapsed_ms, status_code
 
 
 async def log_request(
@@ -144,10 +164,12 @@ async def log_request(
     model: Optional[str],
     prompt_tokens: int,
     completion_tokens: int,
-    response_time: float,
+    response_time_ms: int,
     status_code: int,
+    is_success: bool,
     error_message: Optional[str],
     is_streaming: bool,
+    source_ip: str,
 ):
     log = RequestLog(
         channel_id=channel_id,
@@ -155,25 +177,38 @@ async def log_request(
         model=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        response_time=response_time,
+        response_time_ms=response_time_ms,
         status_code=status_code,
+        is_success=is_success,
         error_message=error_message,
         is_streaming=is_streaming,
+        source_ip=source_ip,
     )
     session.add(log)
     await session.commit()
 
 
-async def update_key_stats(session: AsyncSession, key: Key, success: bool, response_time: float):
+async def update_key_stats(
+    session: AsyncSession,
+    key: Key,
+    success: bool,
+    response_time_ms: int,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+):
     key.last_used = datetime.now()
     key.total_requests += 1
     if success:
         key.success_requests += 1
+        # Running average of response time in ms
         if key.avg_response_time == 0:
-            key.avg_response_time = response_time
+            key.avg_response_time = response_time_ms
         else:
-            key.avg_response_time = (key.avg_response_time * (key.success_requests - 1) + response_time) / key.success_requests
+            key.avg_response_time = (key.avg_response_time * (key.success_requests - 1) + response_time_ms) / key.success_requests
+        key.total_prompt_tokens += prompt_tokens
+        key.total_completion_tokens += completion_tokens
     else:
+        key.failed_requests += 1
         key.error_count += 1
     await session.commit()
 
@@ -182,10 +217,11 @@ async def proxy_request(request: Request, path: str, body: dict):
     """Core proxy logic with retry and key selection."""
     is_stream = body.get("stream", False)
     model = body.get("model", None)
+    source_ip = extract_source_ip(request)
     attempted_keys = []
 
     for attempt in range(MAX_RETRY_COUNT):
-        async with get_session() as session:
+        async with get_db_session() as session:
             # Find enabled channels
             channels_result = await session.execute(
                 select(Channel).where(Channel.enabled == True)
@@ -206,16 +242,15 @@ async def proxy_request(request: Request, path: str, body: dict):
 
                 try:
                     if is_stream:
-                        result = await stream_forward(channel, key, path, body, dict(request.headers), session)
+                        result = await stream_forward(channel, key, path, body, source_ip, session)
 
                         generator, error_body, status_code = result
                         if generator is None:
-                            # Stream request returned an error status
                             if status_code == 429:
                                 logger.warning(f"Key {key.id} rate limited (stream), retrying...")
                                 continue
                             elif status_code == 401:
-                                async with get_session() as s:
+                                async with get_db_session() as s:
                                     k = await s.get(Key, key.id)
                                     if k:
                                         k.status = "error"
@@ -238,7 +273,7 @@ async def proxy_request(request: Request, path: str, body: dict):
                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
                         )
                     else:
-                        resp, elapsed, status_code = await non_stream_forward(channel, key, path, body, dict(request.headers), session)
+                        resp, elapsed_ms, status_code = await non_stream_forward(channel, key, path, body, source_ip, session)
 
                         if status_code < 400:
                             return JSONResponse(content=resp.json(), status_code=status_code)
@@ -249,7 +284,7 @@ async def proxy_request(request: Request, path: str, body: dict):
                             logger.warning(f"Key {key.id} got {status_code}, retrying...")
                             continue
                         elif status_code == 401:
-                            async with get_session() as s:
+                            async with get_db_session() as s:
                                 k = await s.get(Key, key.id)
                                 if k:
                                     k.status = "error"
@@ -261,19 +296,20 @@ async def proxy_request(request: Request, path: str, body: dict):
 
                 except httpx.TimeoutException:
                     logger.warning(f"Key {key.id} timeout, retrying...")
-                    async with get_session() as s:
+                    timeout_ms = ROUTING_TIMEOUT * 1000
+                    async with get_db_session() as s:
                         k = await s.get(Key, key.id)
                         if k:
-                            await update_key_stats(s, k, False, ROUTING_TIMEOUT)
-                            await log_request(s, channel.id, key.id, model, 0, 0, ROUTING_TIMEOUT, 0, "timeout", is_stream)
+                            await update_key_stats(s, k, False, timeout_ms)
+                            await log_request(s, channel.id, key.id, model, 0, 0, timeout_ms, 0, False, "timeout", is_stream, source_ip)
                     continue
                 except Exception as e:
                     logger.error(f"Key {key.id} forwarding error: {e}")
-                    async with get_session() as s:
+                    async with get_db_session() as s:
                         k = await s.get(Key, key.id)
                         if k:
                             await update_key_stats(s, k, False, 0)
-                            await log_request(s, channel.id, key.id, model, 0, 0, 0, 0, str(e), is_stream)
+                            await log_request(s, channel.id, key.id, model, 0, 0, 0, 0, False, str(e), is_stream, source_ip)
                     continue
 
     raise HTTPException(503, f"All keys exhausted after {MAX_RETRY_COUNT} retries")
@@ -294,7 +330,7 @@ async def completions(request: Request):
 @router.get("/v1/models")
 async def list_models(request: Request):
     models_set = set()
-    async with get_session() as session:
+    async with get_db_session() as session:
         channels_result = await session.execute(select(Channel).where(Channel.enabled == True))
         channels = channels_result.scalars().all()
         proxy = PROXY_URL if PROXY_URL else None
@@ -320,3 +356,4 @@ async def list_models(request: Request):
 
     models_list = [{"id": m, "object": "model", "owned_by": "keyrouter"} for m in sorted(models_set)]
     return JSONResponse(content={"object": "list", "data": models_list})
+

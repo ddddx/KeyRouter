@@ -48,6 +48,17 @@
       </div>
     </div>
 
+    <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
+      <h3 class="text-lg font-semibold mb-4">Log Retention</h3>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="text-sm text-gray-400 mb-1 block">Retention Days</label>
+          <div class="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm">{{ config.log_retention_days }} days</div>
+        </div>
+      </div>
+      <p class="text-gray-500 text-xs mt-2">Logs older than {{ config.log_retention_days }} days are automatically cleaned up once per day.</p>
+    </div>
+
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
       <h3 class="text-lg font-semibold mb-4">Configuration Notes</h3>
       <div class="text-gray-400 text-sm space-y-2">
@@ -58,6 +69,7 @@
           <li><code class="text-indigo-400">KEYROUTER_HEALTH_CHECK_MAX_ERRORS</code> — Max errors before marking key as error (default: 3)</li>
           <li><code class="text-indigo-400">KEYROUTER_MAX_RETRY_COUNT</code> — Max retry attempts per request (default: 3)</li>
           <li><code class="text-indigo-400">KEYROUTER_PROXY_URL</code> — HTTP proxy for outbound requests (default: none)</li>
+          <li><code class="text-indigo-400">KEYROUTER_LOG_RETENTION_DAYS</code> — Log retention in days (default: 30)</li>
         </ul>
       </div>
     </div>

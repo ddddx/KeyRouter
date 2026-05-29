@@ -28,6 +28,9 @@ export const getKeyStats = (id) => api.get(`/admin/stats/key/${id}`).then(r => r
 // Logs
 export const getLogs = (params) => api.get('/admin/logs', { params }).then(r => r.data)
 
+// CSV export - returns blob
+export const exportLogsCSV = (params) => api.get('/admin/logs/export/csv', { params, responseType: 'blob' }).then(r => r.data)
+
 // Config
 export const getConfig = () => api.get('/admin/config').then(r => r.data)
 

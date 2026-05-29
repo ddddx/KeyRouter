@@ -18,3 +18,6 @@ ROUTING_TIMEOUT = int(os.getenv("KEYROUTER_ROUTING_TIMEOUT", "120"))  # seconds
 
 # Proxy
 PROXY_URL = os.getenv("KEYROUTER_PROXY_URL", "")
+
+# Log retention
+LOG_RETENTION_DAYS = int(os.getenv("KEYROUTER_LOG_RETENTION_DAYS", "30"))  # days

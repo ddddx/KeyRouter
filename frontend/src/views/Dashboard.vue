@@ -8,18 +8,21 @@
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="text-gray-400 text-sm mb-1">Total Requests</div>
           <div class="text-3xl font-bold text-white">{{ stats.total_requests }}</div>
+          <div class="text-xs text-gray-500 mt-1">{{ stats.success_requests }} success / {{ stats.failed_requests }} failed</div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="text-gray-400 text-sm mb-1">Success Rate</div>
-          <div class="text-3xl font-bold text-green-400">{{ 100 - stats.error_rate }}%</div>
+          <div class="text-3xl font-bold text-green-400">{{ stats.success_rate }}%</div>
+          <div class="text-xs text-red-400 mt-1">Error rate: {{ stats.error_rate }}%</div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="text-gray-400 text-sm mb-1">Avg Response Time</div>
-          <div class="text-3xl font-bold text-indigo-400">{{ stats.avg_response_time }}s</div>
+          <div class="text-3xl font-bold text-indigo-400">{{ stats.avg_response_time_ms }}ms</div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="text-gray-400 text-sm mb-1">Total Tokens</div>
           <div class="text-3xl font-bold text-yellow-400">{{ stats.total_tokens }}</div>
+          <div class="text-xs text-gray-500 mt-1">{{ stats.total_prompt_tokens }} prompt / {{ stats.total_completion_tokens }} completion</div>
         </div>
       </div>
 
@@ -31,7 +34,7 @@
             <span class="text-gray-400">Total</span>
             <span class="text-white font-bold">{{ stats.total_channels }}</span>
           </div>
-          <div class="flex justify-between items-center mb-2">
+          <div class="flex justify-between items-center">
             <span class="text-gray-400">Active</span>
             <span class="text-green-400 font-bold">{{ stats.active_channels }}</span>
           </div>
@@ -61,6 +64,86 @@
         </div>
       </div>
 
+      <!-- Trend Charts -->
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <!-- Hourly Trend -->
+        <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold">Hourly Trend (48h)</h3>
+            <div class="flex gap-2 text-xs">
+              <span class="text-green-400">● Success</span>
+              <span class="text-red-400">● Failed</span>
+            </div>
+          </div>
+          <div class="h-48 flex items-end gap-px overflow-x-auto" v-if="stats.hourly_trend && stats.hourly_trend.length > 0">
+            <div v-for="h in stats.hourly_trend" class="flex flex-col items-center justify-end min-w-[8px] flex-1 h-full relative">
+              <div class="w-full bg-green-500/80 rounded-t" :style="{ height: barHeight(h.success, maxHourly) + '%' }"></div>
+              <div class="w-full bg-red-500/80 rounded-t" :style="{ height: barHeight(h.failed, maxHourly) + '%' }"></div>
+            </div>
+          </div>
+          <div v-else class="h-48 flex items-center justify-center text-gray-500 text-sm">No data yet</div>
+          <div class="flex justify-between text-xs text-gray-500 mt-2" v-if="stats.hourly_trend && stats.hourly_trend.length > 0">
+            <span>{{ stats.hourly_trend[0]?.time }}</span>
+            <span>{{ stats.hourly_trend[stats.hourly_trend.length - 1]?.time }}</span>
+          </div>
+        </div>
+
+        <!-- Daily Trend -->
+        <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold">Daily Trend (30d)</h3>
+            <div class="flex gap-2 text-xs">
+              <span class="text-green-400">● Success</span>
+              <span class="text-red-400">● Failed</span>
+            </div>
+          </div>
+          <div class="h-48 flex items-end gap-1 overflow-x-auto" v-if="stats.daily_trend && stats.daily_trend.length > 0">
+            <div v-for="d in stats.daily_trend" class="flex flex-col items-center justify-end min-w-[10px] flex-1 h-full relative">
+              <div class="w-full bg-green-500/80 rounded-t" :style="{ height: barHeight(d.success, maxDaily) + '%' }"></div>
+              <div class="w-full bg-red-500/80 rounded-t" :style="{ height: barHeight(d.failed, maxDaily) + '%' }"></div>
+            </div>
+          </div>
+          <div v-else class="h-48 flex items-center justify-center text-gray-500 text-sm">No data yet</div>
+          <div class="flex justify-between text-xs text-gray-500 mt-2" v-if="stats.daily_trend && stats.daily_trend.length > 0">
+            <span>{{ stats.daily_trend[0]?.time }}</span>
+            <span>{{ stats.daily_trend[stats.daily_trend.length - 1]?.time }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Model Stats -->
+      <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6" v-if="stats.model_stats && stats.model_stats.length > 0">
+        <h3 class="text-lg font-semibold mb-3">Model Usage Statistics</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-gray-400 border-b border-gray-700">
+                <th class="py-2 px-3 text-left">Model</th>
+                <th class="py-2 px-3 text-left">Requests</th>
+                <th class="py-2 px-3 text-left">Success</th>
+                <th class="py-2 px-3 text-left">Failed</th>
+                <th class="py-2 px-3 text-left">Success Rate</th>
+                <th class="py-2 px-3 text-left">Avg RT</th>
+                <th class="py-2 px-3 text-left">Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in stats.model_stats" class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                <td class="py-2 px-3 text-gray-300 font-medium">{{ m.model }}</td>
+                <td class="py-2 px-3 text-gray-300">{{ m.total_requests }}</td>
+                <td class="py-2 px-3 text-green-400">{{ m.success_requests }}</td>
+                <td class="py-2 px-3 text-red-400">{{ m.failed_requests }}</td>
+                <td class="py-2 px-3">
+                  <span :class="m.success_rate >= 95 ? 'text-green-400' : m.success_rate >= 80 ? 'text-yellow-400' : 'text-red-400'">{{ m.success_rate }}%</span>
+                </td>
+                <td class="py-2 px-3 text-gray-300">{{ m.avg_response_time_ms }}ms</td>
+                <td class="py-2 px-3 text-yellow-400">{{ m.total_tokens }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Recent errors -->
       <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
         <h3 class="text-lg font-semibold mb-3">Recent Errors</h3>
@@ -76,6 +159,7 @@
                 <th class="py-2 px-3 text-left">Key</th>
                 <th class="py-2 px-3 text-left">Model</th>
                 <th class="py-2 px-3 text-left">Status</th>
+                <th class="py-2 px-3 text-left">Source IP</th>
                 <th class="py-2 px-3 text-left">Error</th>
               </tr>
             </thead>
@@ -86,6 +170,7 @@
                 <td class="py-2 px-3 text-gray-300">{{ err.key || '-' }}</td>
                 <td class="py-2 px-3 text-gray-300">{{ err.model || '-' }}</td>
                 <td class="py-2 px-3 text-red-400">{{ err.status_code }}</td>
+                <td class="py-2 px-3 text-gray-300">{{ err.source_ip || '-' }}</td>
                 <td class="py-2 px-3 text-red-300 truncate max-w-xs">{{ err.error_message || '-' }}</td>
               </tr>
             </tbody>
@@ -97,7 +182,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getDashboardStats } from '../api.js'
 
 const stats = ref({})
@@ -106,6 +191,21 @@ const loading = ref(true)
 function formatTime(ts) {
   if (!ts) return '-'
   return ts.replace('T', ' ').substring(0, 19)
+}
+
+const maxHourly = computed(() => {
+  if (!stats.value.hourly_trend) return 1
+  return Math.max(...stats.value.hourly_trend.map(h => h.total), 1)
+})
+
+const maxDaily = computed(() => {
+  if (!stats.value.daily_trend) return 1
+  return Math.max(...stats.value.daily_trend.map(d => d.total), 1)
+})
+
+function barHeight(value, max) {
+  if (!max) return 0
+  return Math.max(2, (value / max) * 90) // leave 10% padding at top
 }
 
 onMounted(async () => {

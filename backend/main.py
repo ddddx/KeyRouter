@@ -1,12 +1,12 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from fastapi import HTTPException
 from database import init_db
 from health_check import start_health_checker
+from log_cleanup import start_log_cleanup
 from channel_manager import router as channel_router
 from key_manager import router as key_router
 from router import router as proxy_router
@@ -20,6 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelna
 async def lifespan(app: FastAPI):
     await init_db()
     await start_health_checker()
+    await start_log_cleanup()
     yield
 
 

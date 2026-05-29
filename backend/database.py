@@ -19,5 +19,29 @@ async def init_db():
 
 
 async def get_session() -> AsyncSession:
+    """FastAPI Depends-compatible async generator."""
+    async with async_session() as session:
+        yield session
+
+
+def get_session_ctx():
+    """Manual async context manager for use outside FastAPI Depends."""
+    @staticmethod
+    async def _ctx():
+        async with async_session() as session:
+            yield session
+    from contextlib import asynccontextmanager
+    @asynccontextmanager
+    async def ctx():
+        async with async_session() as session:
+            yield session
+    return ctx()
+
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def get_db_session():
+    """Async context manager for manual session creation (outside Depends)."""
     async with async_session() as session:
         yield session

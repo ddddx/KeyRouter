@@ -29,9 +29,18 @@ class KeyUpdate(BaseModel):
     weight: Optional[int] = None
 
 
+def mask_key(val: str) -> str:
+    if not val:
+        return ""
+    if len(val) <= 8:
+        return val
+    return val[:8] + "***"
+
+
 class KeyResponse(BaseModel):
     id: int
     value: str
+    value_masked: str
     channel_id: int
     channel_name: Optional[str] = None
     status: str
@@ -42,12 +51,43 @@ class KeyResponse(BaseModel):
     quota_remaining: Optional[float] = None
     total_requests: int
     success_requests: int
-    avg_response_time: float
+    failed_requests: int
+    avg_response_time_ms: float
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_tokens: int
+    success_rate: float
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+def make_key_response(k: Key, ch_name: str = None) -> KeyResponse:
+    return KeyResponse(
+        id=k.id,
+        value=k.value,
+        value_masked=mask_key(k.value),
+        channel_id=k.channel_id,
+        channel_name=ch_name,
+        status=k.status,
+        weight=k.weight,
+        last_used=str(k.last_used) if k.last_used else None,
+        last_check=str(k.last_check) if k.last_check else None,
+        error_count=k.error_count,
+        quota_remaining=k.quota_remaining,
+        total_requests=k.total_requests,
+        success_requests=k.success_requests,
+        failed_requests=k.failed_requests,
+        avg_response_time_ms=round(k.avg_response_time, 1),
+        total_prompt_tokens=k.total_prompt_tokens,
+        total_completion_tokens=k.total_completion_tokens,
+        total_tokens=k.total_prompt_tokens + k.total_completion_tokens,
+        success_rate=round(k.success_requests / k.total_requests * 100, 2) if k.total_requests > 0 else 0,
+        created_at=str(k.created_at) if k.created_at else None,
+        updated_at=str(k.updated_at) if k.updated_at else None,
+    )
 
 
 @router.get("/", response_model=list[KeyResponse])
@@ -64,22 +104,15 @@ async def list_keys(
     result = await session.execute(q)
     keys = result.scalars().all()
     responses = []
+    # Pre-load channels
+    channels_cache = {}
     for k in keys:
-        ch = await session.get(Channel, k.channel_id)
-        responses.append(KeyResponse(
-            id=k.id, value=k.value, channel_id=k.channel_id,
-            channel_name=ch.name if ch else None,
-            status=k.status, weight=k.weight,
-            last_used=str(k.last_used) if k.last_used else None,
-            last_check=str(k.last_check) if k.last_check else None,
-            error_count=k.error_count,
-            quota_remaining=k.quota_remaining,
-            total_requests=k.total_requests,
-            success_requests=k.success_requests,
-            avg_response_time=k.avg_response_time,
-            created_at=str(k.created_at) if k.created_at else None,
-            updated_at=str(k.updated_at) if k.updated_at else None,
-        ))
+        if k.channel_id not in channels_cache:
+            ch = await session.get(Channel, k.channel_id)
+            channels_cache[k.channel_id] = ch
+        ch_name = channels_cache[k.channel_id]
+        ch_name = ch_name.name if ch_name else None
+        responses.append(make_key_response(k, ch_name))
     return responses
 
 
@@ -92,20 +125,7 @@ async def create_key(data: KeyCreate, session: AsyncSession = Depends(get_sessio
     session.add(k)
     await session.commit()
     await session.refresh(k)
-    return KeyResponse(
-        id=k.id, value=k.value, channel_id=k.channel_id,
-        channel_name=ch.name,
-        status=k.status, weight=k.weight,
-        last_used=str(k.last_used) if k.last_used else None,
-        last_check=str(k.last_check) if k.last_check else None,
-        error_count=k.error_count,
-        quota_remaining=k.quota_remaining,
-        total_requests=k.total_requests,
-        success_requests=k.success_requests,
-        avg_response_time=k.avg_response_time,
-        created_at=str(k.created_at) if k.created_at else None,
-        updated_at=str(k.updated_at) if k.updated_at else None,
-    )
+    return make_key_response(k, ch.name)
 
 
 @router.post("/batch", response_model=list[KeyResponse])
@@ -113,7 +133,6 @@ async def batch_create_keys(data: KeyBatchCreate, session: AsyncSession = Depend
     ch = await session.get(Channel, data.channel_id)
     if not ch:
         raise HTTPException(404, "Channel not found")
-    # Parse keys: split by comma, newline, or whitespace
     raw_keys = data.keys.replace("\n", ",").replace("\r", ",").replace(" ", ",")
     key_values = [kv.strip() for kv in raw_keys.split(",") if kv.strip()]
     if not key_values:
@@ -122,7 +141,7 @@ async def batch_create_keys(data: KeyBatchCreate, session: AsyncSession = Depend
     for kv in key_values:
         existing = await session.execute(select(Key).where(Key.value == kv, Key.channel_id == data.channel_id))
         if existing.scalar_one_or_none():
-            continue  # skip duplicates
+            continue
         k = Key(value=kv, channel_id=data.channel_id, weight=data.weight)
         session.add(k)
         created.append(k)
@@ -130,20 +149,7 @@ async def batch_create_keys(data: KeyBatchCreate, session: AsyncSession = Depend
     responses = []
     for k in created:
         await session.refresh(k)
-        responses.append(KeyResponse(
-            id=k.id, value=k.value, channel_id=k.channel_id,
-            channel_name=ch.name,
-            status=k.status, weight=k.weight,
-            last_used=str(k.last_used) if k.last_used else None,
-            last_check=str(k.last_check) if k.last_check else None,
-            error_count=k.error_count,
-            quota_remaining=k.quota_remaining,
-            total_requests=k.total_requests,
-            success_requests=k.success_requests,
-            avg_response_time=k.avg_response_time,
-            created_at=str(k.created_at) if k.created_at else None,
-            updated_at=str(k.updated_at) if k.updated_at else None,
-        ))
+        responses.append(make_key_response(k, ch.name))
     return responses
 
 
@@ -158,20 +164,7 @@ async def update_key(key_id: int, data: KeyUpdate, session: AsyncSession = Depen
     await session.commit()
     await session.refresh(k)
     ch = await session.get(Channel, k.channel_id)
-    return KeyResponse(
-        id=k.id, value=k.value, channel_id=k.channel_id,
-        channel_name=ch.name if ch else None,
-        status=k.status, weight=k.weight,
-        last_used=str(k.last_used) if k.last_used else None,
-        last_check=str(k.last_check) if k.last_check else None,
-        error_count=k.error_count,
-        quota_remaining=k.quota_remaining,
-        total_requests=k.total_requests,
-        success_requests=k.success_requests,
-        avg_response_time=k.avg_response_time,
-        created_at=str(k.created_at) if k.created_at else None,
-        updated_at=str(k.updated_at) if k.updated_at else None,
-    )
+    return make_key_response(k, ch.name if ch else None)
 
 
 @router.delete("/{key_id}")
@@ -234,7 +227,6 @@ async def select_key(channel_id: int, strategy: str, session: AsyncSession) -> O
         return random.choice(active_keys)
 
     elif strategy == "least_used":
-        # Pick the key with lowest total_requests; tie-break by last_used (oldest first)
         sorted_keys = sorted(active_keys, key=lambda k: (k.total_requests, k.last_used or datetime.min))
         return sorted_keys[0]
 
