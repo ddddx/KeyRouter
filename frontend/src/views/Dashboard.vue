@@ -4,7 +4,7 @@
     <div v-if="loading" class="text-gray-400">Loading...</div>
     <div v-else>
       <!-- Top stats cards -->
-      <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="text-gray-400 text-sm mb-1">Total Requests</div>
           <div class="text-3xl font-bold text-white">{{ stats.total_requests }}</div>
@@ -27,7 +27,7 @@
       </div>
 
       <!-- Channel / Key stats -->
-      <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <h3 class="text-lg font-semibold mb-3">Channels</h3>
           <div class="flex justify-between items-center mb-2">
@@ -65,10 +65,10 @@
       </div>
 
       <!-- Trend Charts -->
-      <div class="grid grid-cols-2 gap-4 mb-6">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
         <!-- Hourly Trend -->
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <div class="flex items-center justify-between mb-3">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
             <h3 class="text-lg font-semibold">Hourly Trend (48h)</h3>
             <div class="flex gap-2 text-xs">
               <span class="text-green-400">● Success</span>
@@ -90,7 +90,7 @@
 
         <!-- Daily Trend -->
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <div class="flex items-center justify-between mb-3">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
             <h3 class="text-lg font-semibold">Daily Trend (30d)</h3>
             <div class="flex gap-2 text-xs">
               <span class="text-green-400">● Success</span>

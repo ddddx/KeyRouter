@@ -42,15 +42,15 @@ export const getMe = () => api.get('/auth/me').then(r => r.data)
 export const getAuthStatus = () => api.get('/auth/status').then(r => r.data)
 
 // ─── Channels ───
-export const getChannels = () => api.get('/channels').then(r => r.data)
-export const createChannel = (data) => api.post('/channels', data).then(r => r.data)
+export const getChannels = () => api.get('/channels/').then(r => r.data)
+export const createChannel = (data) => api.post('/channels/', data).then(r => r.data)
 export const getChannel = (id) => api.get(`/channels/${id}`).then(r => r.data)
 export const updateChannel = (id, data) => api.put(`/channels/${id}`, data).then(r => r.data)
 export const deleteChannel = (id) => api.delete(`/channels/${id}`).then(r => r.data)
 
 // ─── Keys ───
-export const getKeys = (params) => api.get('/keys', { params }).then(r => r.data)
-export const createKey = (data) => api.post('/keys', data).then(r => r.data)
+export const getKeys = (params) => api.get('/keys/', { params }).then(r => r.data)
+export const createKey = (data) => api.post('/keys/', data).then(r => r.data)
 export const batchCreateKeys = (data) => api.post('/keys/batch', data).then(r => r.data)
 export const updateKey = (id, data) => api.put(`/keys/${id}`, data).then(r => r.data)
 export const deleteKey = (id) => api.delete(`/keys/${id}`).then(r => r.data)
@@ -71,8 +71,8 @@ export const exportLogsCSV = (params) => api.get('/admin/logs/export/csv', { par
 export const getConfig = () => api.get('/admin/config').then(r => r.data)
 
 // ─── ApiKeys (External Keys) ───
-export const getApiKeys = (params) => api.get('/api-keys', { params }).then(r => r.data)
-export const createApiKey = (data) => api.post('/api-keys', data).then(r => r.data)
+export const getApiKeys = (params) => api.get('/api-keys/', { params }).then(r => r.data)
+export const createApiKey = (data) => api.post('/api-keys/', data).then(r => r.data)
 export const batchCreateApiKeys = (data) => api.post('/api-keys/batch', data).then(r => r.data)
 export const updateApiKey = (id, data) => api.put(`/api-keys/${id}`, data).then(r => r.data)
 export const deleteApiKey = (id) => api.delete(`/api-keys/${id}`).then(r => r.data)

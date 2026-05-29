@@ -17,8 +17,9 @@ from config import PORT, HOST
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
-# Paths that require JWT auth (admin endpoints)
-AUTH_REQUIRED_PREFIXES = ("/api/channels/", "/api/keys/", "/api/admin/", "/api/auth/change-password", "/api/auth/me", "/api/api-keys/")
+# Paths that require JWT auth (admin endpoints). Keep these without a
+# trailing slash so both collection endpoints and nested resources are covered.
+AUTH_REQUIRED_PREFIXES = ("/api/channels", "/api/keys", "/api/admin", "/api/auth/change-password", "/api/auth/me", "/api/api-keys")
 # Paths that do NOT require auth
 AUTH_EXEMPT_PATHS = ("/api/auth/login", "/api/auth/status", "/api/auth/setup")
 
@@ -55,7 +56,7 @@ async def auth_middleware(request: Request, call_next):
     # Check if path requires admin JWT auth
     needs_auth = False
     for prefix in AUTH_REQUIRED_PREFIXES:
-        if path.startswith(prefix):
+        if path == prefix or path.startswith(prefix + "/"):
             needs_auth = True
             break
 
@@ -109,6 +110,14 @@ if os.path.isdir(static_dir):
         file_path = os.path.join(static_dir, path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
+        first_segment = path.split("/", 1)[0]
+        if (
+            path in ("api", "v1")
+            or path.startswith(("api/", "v1/"))
+            or first_segment.startswith(".")
+            or "." in os.path.basename(path)
+        ):
+            raise HTTPException(404)
         # SPA fallback
         index_path = os.path.join(static_dir, "index.html")
         if os.path.isfile(index_path):

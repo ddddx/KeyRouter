@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
       <h2 class="text-2xl font-bold">Channels</h2>
       <button @click="showAddModal = true" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors">
         + Add Channel
@@ -14,16 +14,16 @@
     <div v-else class="grid grid-cols-1 gap-4">
       <div v-for="ch in channels" class="bg-gray-800 rounded-xl p-5 border border-gray-700 hover:border-indigo-500/50 transition-colors cursor-pointer"
            @click="$router.push(`/channels/${ch.id}`)">
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="flex items-center gap-3">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-3">
               <h3 class="text-lg font-semibold">{{ ch.name }}</h3>
               <span v-if="ch.enabled" class="px-2 py-0.5 bg-green-600/20 text-green-400 text-xs rounded-full">Active</span>
               <span v-else class="px-2 py-0.5 bg-red-600/20 text-red-400 text-xs rounded-full">Disabled</span>
             </div>
-            <div class="text-gray-400 text-sm mt-1">{{ ch.base_url }}</div>
+            <div class="text-gray-400 text-sm mt-1 break-all">{{ ch.base_url }}</div>
           </div>
-          <div class="flex items-center gap-6">
+          <div class="flex flex-wrap items-center gap-4 lg:gap-6">
             <div class="text-center">
               <div class="text-gray-400 text-xs">Strategy</div>
               <div class="text-white text-sm font-medium">{{ ch.strategy }}</div>
@@ -46,7 +46,7 @@
 
     <!-- Add Channel Modal -->
     <div v-if="showAddModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-40">
-      <div class="bg-gray-800 rounded-xl p-6 w-[480px] border border-gray-700">
+      <div class="bg-gray-800 rounded-xl p-6 w-[calc(100vw-2rem)] max-w-[480px] border border-gray-700">
         <h3 class="text-lg font-semibold mb-4">Add Channel</h3>
         <div class="space-y-4">
           <div>

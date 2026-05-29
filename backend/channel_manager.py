@@ -41,6 +41,7 @@ class ChannelResponse(BaseModel):
         from_attributes = True
 
 
+@router.get("", response_model=list[ChannelResponse], include_in_schema=False)
 @router.get("/", response_model=list[ChannelResponse])
 async def list_channels(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Channel).order_by(Channel.id))
@@ -66,6 +67,7 @@ async def list_channels(session: AsyncSession = Depends(get_session)):
     return responses
 
 
+@router.post("", response_model=ChannelResponse, include_in_schema=False)
 @router.post("/", response_model=ChannelResponse)
 async def create_channel(data: ChannelCreate, session: AsyncSession = Depends(get_session)):
     existing = await session.execute(select(Channel).where(Channel.name == data.name))

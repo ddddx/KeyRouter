@@ -1,8 +1,8 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
       <h1 class="text-2xl font-bold">对外 Key 管理</h1>
-      <div class="flex gap-3">
+      <div class="flex flex-wrap gap-3">
         <button @click="showCreateModal = true" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
           + 创建 Key
         </button>
@@ -13,7 +13,7 @@
     </div>
 
     <!-- Filter -->
-    <div class="flex gap-4 mb-4">
+    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
       <select v-model="filterChannel" @change="fetchKeys" class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200">
         <option value="">全部渠道</option>
         <option value="none">未绑定渠道</option>
@@ -27,8 +27,8 @@
     </div>
 
     <!-- Table -->
-    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-      <table class="w-full text-sm">
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-x-auto">
+      <table class="w-full min-w-[900px] text-sm">
         <thead class="bg-gray-900 text-gray-400">
           <tr>
             <th class="px-4 py-3 text-left font-medium">名称</th>
@@ -60,7 +60,7 @@
             <td class="px-4 py-3 text-gray-300">{{ ak.rate_limit || '不限' }}</td>
             <td class="px-4 py-3 text-gray-300">
               <span v-if="ak.total_quota !== null">
-                {{ ak.used_quota.toFixed(2) }} / {{ ak.total_quota.toFixed(2) }}
+                {{ formatMoney(ak.used_quota) }} / {{ formatMoney(ak.total_quota) }}
                 <span class="text-xs text-gray-500">({{ quotaPercent(ak) }}%)</span>
               </span>
               <span v-else class="text-gray-500">不限</span>
@@ -85,7 +85,7 @@
 
     <!-- Create Modal -->
     <div v-if="showCreateModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showCreateModal = false">
-      <div class="bg-gray-800 rounded-xl border border-gray-600 p-6 w-full max-w-md">
+      <div class="bg-gray-800 rounded-xl border border-gray-600 p-6 w-[calc(100vw-2rem)] max-w-md">
         <h2 class="text-lg font-bold mb-4">创建对外 Key</h2>
         <div class="space-y-3">
           <div>
@@ -127,7 +127,7 @@
 
     <!-- Batch Create Modal -->
     <div v-if="showBatchModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showBatchModal = false">
-      <div class="bg-gray-800 rounded-xl border border-gray-600 p-6 w-full max-w-md">
+      <div class="bg-gray-800 rounded-xl border border-gray-600 p-6 w-[calc(100vw-2rem)] max-w-md">
         <h2 class="text-lg font-bold mb-4">批量生成对外 Key</h2>
         <div class="space-y-3">
           <div>
@@ -348,7 +348,11 @@ function statusLabel(status) {
 
 function quotaPercent(ak) {
   if (!ak.total_quota) return 0
-  return Math.min(100, Math.round(ak.used_quota / ak.total_quota * 100))
+  return Math.min(100, Math.round((ak.used_quota || 0) / ak.total_quota * 100))
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toFixed(2)
 }
 
 function formatDate(dt) {

@@ -119,6 +119,7 @@ def make_api_key_response(ak: ApiKey, ch_name: str = None) -> ApiKeyResponse:
 
 # ─── CRUD ───
 
+@router.get("", response_model=list[ApiKeyResponse], include_in_schema=False)
 @router.get("/", response_model=list[ApiKeyResponse])
 async def list_api_keys(
     channel_id: Optional[int] = None,
@@ -150,6 +151,7 @@ async def list_api_keys(
     return responses
 
 
+@router.post("", response_model=ApiKeyResponse, include_in_schema=False)
 @router.post("/", response_model=ApiKeyResponse)
 async def create_api_key(data: ApiKeyCreate, session: AsyncSession = Depends(get_session)):
     # Validate channel if specified

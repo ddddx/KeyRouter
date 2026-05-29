@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="flex items-center gap-3 mb-6">
+    <div class="flex flex-wrap items-center gap-3 mb-6">
       <button @click="$router.push('/channels')" class="text-gray-400 hover:text-white transition-colors">← Back</button>
       <h2 class="text-2xl font-bold">{{ channel.name }}</h2>
       <span v-if="channel.enabled" class="px-2 py-0.5 bg-green-600/20 text-green-400 text-xs rounded-full">Active</span>
@@ -9,10 +9,10 @@
 
     <!-- Channel info -->
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
-      <div class="grid grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div>
           <div class="text-gray-400 text-sm">Base URL</div>
-          <div class="text-white text-sm mt-1">{{ channel.base_url }}</div>
+          <div class="text-white text-sm mt-1 break-all">{{ channel.base_url }}</div>
         </div>
         <div>
           <div class="text-gray-400 text-sm">Strategy</div>
@@ -32,7 +32,7 @@
     <!-- Edit channel -->
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
       <h3 class="text-lg font-semibold mb-3">Edit Channel</h3>
-      <div class="grid grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div>
           <label class="text-sm text-gray-400 mb-1 block">Strategy</label>
           <select v-model="editData.strategy" @change="saveChannel" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:outline-none text-sm">
@@ -60,7 +60,7 @@
     <!-- Channel Stats -->
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6" v-if="channelStats">
       <h3 class="text-lg font-semibold mb-3">Channel Statistics</h3>
-      <div class="grid grid-cols-6 gap-4 mb-4">
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-4">
         <div>
           <div class="text-gray-400 text-xs">Requests</div>
           <div class="text-white font-bold">{{ channelStats.total_requests }}</div>
@@ -86,7 +86,7 @@
           <div class="text-yellow-400 font-bold">{{ channelStats.total_tokens }}</div>
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <div class="text-gray-400 text-xs">Key Count</div>
           <div class="text-white">{{ channelStats.key_count }} ({{ channelStats.active_key_count }} active, {{ channelStats.error_key_count }} error)</div>
@@ -96,9 +96,9 @@
 
     <!-- Key Statistics Table -->
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
-      <div class="flex items-center justify-between mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <h3 class="text-lg font-semibold">Key Statistics</h3>
-        <div class="flex gap-3">
+        <div class="flex flex-wrap gap-3">
           <button @click="showBatchAdd = true" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors">
             + Batch Add Keys
           </button>
@@ -157,7 +157,7 @@
 
     <!-- Batch Add Keys Modal -->
     <div v-if="showBatchAdd" class="fixed inset-0 bg-black/50 flex items-center justify-center z-40">
-      <div class="bg-gray-800 rounded-xl p-6 w-[560px] border border-gray-700">
+      <div class="bg-gray-800 rounded-xl p-6 w-[calc(100vw-2rem)] max-w-[560px] border border-gray-700">
         <h3 class="text-lg font-semibold mb-4">Batch Add Keys</h3>
         <p class="text-gray-400 text-sm mb-3">Paste keys below, separated by commas or new lines:</p>
         <textarea v-model="batchKeys" rows="8" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:outline-none text-sm resize-none" placeholder="sk-xxx1,sk-xxx2&#10;sk-xxx3"></textarea>

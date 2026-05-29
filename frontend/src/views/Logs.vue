@@ -4,7 +4,7 @@
 
     <!-- Filters -->
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
-      <div class="grid grid-cols-3 gap-4 mb-3">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
         <div>
           <label class="text-sm text-gray-400 mb-1 block">Channel</label>
           <select v-model="filters.channel_id" @change="refresh" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:outline-none text-sm">
@@ -32,7 +32,7 @@
           </select>
         </div>
       </div>
-      <div class="grid grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label class="text-sm text-gray-400 mb-1 block">Start Time</label>
           <input v-model="filters.start_time" @change="refresh" type="datetime-local" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:outline-none text-sm">
@@ -41,7 +41,7 @@
           <label class="text-sm text-gray-400 mb-1 block">End Time</label>
           <input v-model="filters.end_time" @change="refresh" type="datetime-local" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:outline-none text-sm">
         </div>
-        <div class="flex items-end gap-3">
+        <div class="flex flex-wrap items-end gap-3">
           <button @click="refresh" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors">Refresh</button>
           <button @click="exportCSV" class="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium transition-colors">⬇ Export CSV</button>
         </div>
@@ -92,7 +92,7 @@
           </tbody>
         </table>
       </div>
-      <div class="flex items-center justify-between mt-4 text-sm text-gray-400">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 text-sm text-gray-400">
         <span>Showing {{ logs.entries.length }} of {{ logs.total }} entries</span>
         <div class="flex gap-2">
           <button v-if="filters.offset > 0" @click="prevPage" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors">← Prev</button>

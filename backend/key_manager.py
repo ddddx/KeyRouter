@@ -90,6 +90,7 @@ def make_key_response(k: Key, ch_name: str = None) -> KeyResponse:
     )
 
 
+@router.get("", response_model=list[KeyResponse], include_in_schema=False)
 @router.get("/", response_model=list[KeyResponse])
 async def list_keys(
     channel_id: Optional[int] = None,
@@ -116,6 +117,7 @@ async def list_keys(
     return responses
 
 
+@router.post("", response_model=KeyResponse, include_in_schema=False)
 @router.post("/", response_model=KeyResponse)
 async def create_key(data: KeyCreate, session: AsyncSession = Depends(get_session)):
     ch = await session.get(Channel, data.channel_id)
