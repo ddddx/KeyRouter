@@ -39,11 +39,31 @@
     </div>
 
     <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6">
-      <h3 class="text-lg font-semibold mb-4">{{ t('settings.routing') }}</h3>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <h3 class="text-lg font-semibold">{{ t('settings.routing') }}</h3>
+        <button
+          @click="saveSettings"
+          :disabled="saving"
+          class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ saving ? t('common.saving') : t('common.save') }}
+        </button>
+      </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="text-sm text-gray-400 mb-1 block">{{ t('settings.maxRetry') }}</label>
           <div class="px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm">{{ config.max_retry_count }}</div>
+        </div>
+        <div>
+          <label class="text-sm text-gray-400 mb-1 block">{{ t('settings.keyCooldown') }}</label>
+          <input
+            v-model.number="form.key_cooldown_minutes"
+            type="number"
+            min="1"
+            step="1"
+            class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:border-indigo-500 focus:outline-none"
+          >
+          <p class="text-gray-500 text-xs mt-2">{{ t('settings.cooldownHint', { count: cooldownLabel }) }}</p>
         </div>
       </div>
     </div>
@@ -68,6 +88,7 @@
           <li><code class="text-indigo-400 break-all">KEYROUTER_HEALTH_CHECK_INTERVAL</code> - {{ t('settings.envHealthInterval') }}</li>
           <li><code class="text-indigo-400 break-all">KEYROUTER_HEALTH_CHECK_MAX_ERRORS</code> - {{ t('settings.envHealthErrors') }}</li>
           <li><code class="text-indigo-400 break-all">KEYROUTER_MAX_RETRY_COUNT</code> - {{ t('settings.envRetry') }}</li>
+          <li><code class="text-indigo-400 break-all">KEYROUTER_KEY_COOLDOWN_SECONDS</code> - {{ t('settings.envCooldown') }}</li>
           <li><code class="text-indigo-400 break-all">KEYROUTER_PROXY_URL</code> - {{ t('settings.envProxy') }}</li>
           <li><code class="text-indigo-400 break-all">KEYROUTER_LOG_RETENTION_DAYS</code> - {{ t('settings.envRetention') }}</li>
         </ul>
@@ -77,12 +98,45 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getConfig } from '../api.js'
+import { computed, ref, onMounted } from 'vue'
+import { getConfig, updateConfig } from '../api.js'
 import { t } from '../i18n.js'
 
 const config = ref({})
-onMounted(async () => {
+const form = ref({ key_cooldown_minutes: 15 })
+const saving = ref(false)
+const cooldownLabel = computed(() => {
+  const seconds = Number(form.value.key_cooldown_minutes || 15) * 60
+  if (seconds % 60 === 0) {
+    return t('settings.minutes', { count: seconds / 60 })
+  }
+  return `${seconds}s`
+})
+
+function fillForm(nextConfig) {
+  const seconds = Number(nextConfig.key_cooldown_seconds || 900)
+  form.value.key_cooldown_minutes = Math.max(1, Math.round(seconds / 60))
+}
+
+async function loadConfig() {
   config.value = await getConfig()
+  fillForm(config.value)
+}
+
+async function saveSettings() {
+  saving.value = true
+  try {
+    const minutes = Math.max(1, Number(form.value.key_cooldown_minutes || 15))
+    await updateConfig({ key_cooldown_seconds: Math.round(minutes * 60) })
+    await loadConfig()
+  } catch (e) {
+    alert(t('common.operationFailed', { message: e.response?.data?.detail || e.message }))
+  } finally {
+    saving.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadConfig()
 })
 </script>

@@ -1,13 +1,12 @@
 import random
-import asyncio
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, desc, or_
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from database import get_session
-from models import Key, Channel
+from models import Key, Channel, RequestLog
 
 router = APIRouter(prefix="/api/keys", tags=["keys"])
 
@@ -47,6 +46,7 @@ class KeyResponse(BaseModel):
     weight: int
     last_used: Optional[str] = None
     last_check: Optional[str] = None
+    cooldown_until: Optional[str] = None
     error_count: int
     quota_remaining: Optional[float] = None
     total_requests: int
@@ -57,6 +57,7 @@ class KeyResponse(BaseModel):
     total_completion_tokens: int
     total_tokens: int
     success_rate: float
+    last_call: Optional[dict] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -64,7 +65,53 @@ class KeyResponse(BaseModel):
         from_attributes = True
 
 
-def make_key_response(k: Key, ch_name: str = None) -> KeyResponse:
+async def get_last_call(session: AsyncSession, key_id: int) -> Optional[dict]:
+    result = await session.execute(
+        select(RequestLog).where(RequestLog.key_id == key_id).order_by(desc(RequestLog.id)).limit(1)
+    )
+    log = result.scalar_one_or_none()
+    if not log:
+        return None
+    return {
+        "id": log.id,
+        "timestamp": str(log.timestamp) if log.timestamp else None,
+        "model": log.model,
+        "prompt_tokens": log.prompt_tokens or 0,
+        "completion_tokens": log.completion_tokens or 0,
+        "total_tokens": (log.prompt_tokens or 0) + (log.completion_tokens or 0),
+        "response_time_ms": log.response_time_ms or 0,
+        "status_code": log.status_code,
+        "error_code": log.error_code,
+        "error_message": log.error_message,
+        "is_success": log.is_success,
+        "is_streaming": log.is_streaming,
+        "source_ip": log.source_ip,
+    }
+
+
+async def recover_expired_cooldowns(session: AsyncSession, channel_id: Optional[int] = None) -> int:
+    """Move expired cooldown keys back to active status."""
+    now = datetime.now()
+    q = select(Key).where(
+        Key.status == "cooldown",
+        or_(Key.cooldown_until == None, Key.cooldown_until <= now),
+    )
+    if channel_id is not None:
+        q = q.where(Key.channel_id == channel_id)
+
+    result = await session.execute(q)
+    keys = result.scalars().all()
+    for key in keys:
+        key.status = "active"
+        key.cooldown_until = None
+        key.error_count = 0
+
+    if keys:
+        await session.commit()
+    return len(keys)
+
+
+def make_key_response(k: Key, ch_name: str = None, last_call: Optional[dict] = None) -> KeyResponse:
     return KeyResponse(
         id=k.id,
         value=k.value,
@@ -75,6 +122,7 @@ def make_key_response(k: Key, ch_name: str = None) -> KeyResponse:
         weight=k.weight,
         last_used=str(k.last_used) if k.last_used else None,
         last_check=str(k.last_check) if k.last_check else None,
+        cooldown_until=str(k.cooldown_until) if k.cooldown_until else None,
         error_count=k.error_count,
         quota_remaining=k.quota_remaining,
         total_requests=k.total_requests,
@@ -85,6 +133,7 @@ def make_key_response(k: Key, ch_name: str = None) -> KeyResponse:
         total_completion_tokens=k.total_completion_tokens,
         total_tokens=k.total_prompt_tokens + k.total_completion_tokens,
         success_rate=round(k.success_requests / k.total_requests * 100, 2) if k.total_requests > 0 else 0,
+        last_call=last_call,
         created_at=str(k.created_at) if k.created_at else None,
         updated_at=str(k.updated_at) if k.updated_at else None,
     )
@@ -97,6 +146,7 @@ async def list_keys(
     status: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
 ):
+    await recover_expired_cooldowns(session, channel_id)
     q = select(Key).order_by(Key.id)
     if channel_id:
         q = q.where(Key.channel_id == channel_id)
@@ -113,7 +163,7 @@ async def list_keys(
             channels_cache[k.channel_id] = ch
         ch_name = channels_cache[k.channel_id]
         ch_name = ch_name.name if ch_name else None
-        responses.append(make_key_response(k, ch_name))
+        responses.append(make_key_response(k, ch_name, await get_last_call(session, k.id)))
     return responses
 
 
@@ -127,7 +177,7 @@ async def create_key(data: KeyCreate, session: AsyncSession = Depends(get_sessio
     session.add(k)
     await session.commit()
     await session.refresh(k)
-    return make_key_response(k, ch.name)
+    return make_key_response(k, ch.name, await get_last_call(session, k.id))
 
 
 @router.post("/batch", response_model=list[KeyResponse])
@@ -151,7 +201,7 @@ async def batch_create_keys(data: KeyBatchCreate, session: AsyncSession = Depend
     responses = []
     for k in created:
         await session.refresh(k)
-        responses.append(make_key_response(k, ch.name))
+        responses.append(make_key_response(k, ch.name, await get_last_call(session, k.id)))
     return responses
 
 
@@ -163,10 +213,13 @@ async def update_key(key_id: int, data: KeyUpdate, session: AsyncSession = Depen
     update_data = data.model_dump(exclude_unset=True)
     for attr, val in update_data.items():
         setattr(k, attr, val)
+    if data.status == "active":
+        k.cooldown_until = None
+        k.error_count = 0
     await session.commit()
     await session.refresh(k)
     ch = await session.get(Channel, k.channel_id)
-    return make_key_response(k, ch.name if ch else None)
+    return make_key_response(k, ch.name if ch else None, await get_last_call(session, k.id))
 
 
 @router.delete("/{key_id}")
@@ -203,6 +256,8 @@ _round_robin_counters: dict[int, int] = {}
 
 async def select_key(channel_id: int, strategy: str, session: AsyncSession) -> Optional[Key]:
     """Select a key based on the channel's routing strategy."""
+    await recover_expired_cooldowns(session, channel_id)
+
     result = await session.execute(
         select(Key).where(Key.channel_id == channel_id, Key.status == "active")
     )

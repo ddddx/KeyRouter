@@ -7,6 +7,7 @@
 - **多渠道管理** — 支持多个 API 渠道（如 OpenAI 官方、Azure OpenAI、第三方转发等）
 - **智能路由** — 四种策略：Round Robin、加权随机、随机、最少使用
 - **Key 健康检测** — 自动定时检测 Key 有效性，标记失效 Key
+- **429 自动冷却** — 上游 Key 触发限速后进入冷却，到期自动恢复可用
 - **自动重试** — 请求失败自动切换 Key 重试，支持最多 3 次重试
 - **Streaming 支持** — 完整支持 SSE 流式转发（chat/completions stream）
 - **OpenAI 兼容** — 兼容 `/v1/chat/completions`、`/v1/completions`、`/v1/models`
@@ -65,6 +66,7 @@ response = client.chat.completions.create(
 | `KEYROUTER_HEALTH_CHECK_INTERVAL` | Key 健康检测间隔（秒） | 300 |
 | `KEYROUTER_HEALTH_CHECK_MAX_ERRORS` | 标记为 error 的最大错误数 | 3 |
 | `KEYROUTER_MAX_RETRY_COUNT` | 每请求最大重试次数 | 3 |
+| `KEYROUTER_KEY_COOLDOWN_SECONDS` | 上游 Key 遇到 429 后的默认冷却秒数，后台设置页可覆盖 | 900 |
 | `KEYROUTER_PROXY_URL` | 出站请求代理 | 无 |
 | `KEYROUTER_LOG_RETENTION_DAYS` | 日志保留天数（自动清理） | 30 |
 

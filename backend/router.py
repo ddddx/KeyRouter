@@ -1,18 +1,19 @@
 import time
 import json
 import logging
-from datetime import datetime
-from typing import Optional, AsyncIterator
+from datetime import datetime, timedelta
+from typing import Optional
 from fastapi import APIRouter, Request, Depends, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from database import get_session, get_db_session
+from database import get_db_session
 from models import Key, Channel, RequestLog, ApiKey
 from key_manager import select_key
 from api_key_manager import validate_api_key, update_api_key_usage
 from config import MAX_RETRY_COUNT, ROUTING_TIMEOUT, PROXY_URL
+from settings_store import get_key_cooldown_seconds
 import httpx
 
 logger = logging.getLogger("router")
@@ -40,6 +41,39 @@ def extract_source_ip(request: Request) -> str:
     if request.client:
         return request.client.host
     return "unknown"
+
+
+def parse_error_payload(raw_body: bytes | str) -> tuple[Optional[str], Optional[str]]:
+    """Extract a readable upstream error message and provider error code."""
+    if isinstance(raw_body, bytes):
+        raw_text = raw_body.decode(errors="replace")
+    else:
+        raw_text = raw_body or ""
+    try:
+        data = json.loads(raw_text)
+    except Exception:
+        return raw_text[:1000] if raw_text else None, None
+
+    error = data.get("error")
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("detail") or json.dumps(error, ensure_ascii=False)
+        code = error.get("code") or error.get("type") or error.get("param")
+        return str(message)[:2000] if message else None, str(code)[:100] if code else None
+    if isinstance(error, str):
+        return error[:2000], str(data.get("code"))[:100] if data.get("code") else None
+    message = data.get("message") or data.get("detail")
+    code = data.get("code") or data.get("error_code")
+    return str(message)[:2000] if message else raw_text[:1000], str(code)[:100] if code else None
+
+
+async def set_key_cooldown(session: AsyncSession, key_id: int) -> None:
+    key = await session.get(Key, key_id)
+    if not key:
+        return
+    cooldown_seconds = await get_key_cooldown_seconds(session)
+    key.status = "cooldown"
+    key.cooldown_until = datetime.now() + timedelta(seconds=cooldown_seconds)
+    await session.commit()
 
 
 async def stream_forward(
@@ -72,12 +106,8 @@ async def stream_forward(
                 error_body = await resp.aread()
                 elapsed_ms = int((time.time() - start_time) * 1000)
                 await update_key_stats(session, key, False, elapsed_ms)
-                try:
-                    error_data = json.loads(error_body)
-                    error_msg = error_data.get("error", {}).get("message", str(error_body[:200]))
-                except Exception:
-                    error_msg = error_body.decode()[:200]
-                await log_request(session, channel.id, key.id, model, 0, 0, elapsed_ms, status_code, False, error_msg, True, source_ip)
+                error_msg, error_code = parse_error_payload(error_body)
+                await log_request(session, channel.id, key.id, model, 0, 0, elapsed_ms, status_code, False, error_msg, error_code, True, source_ip)
                 return None, error_body, status_code, 0, 0
 
             # Collect chunks while streaming to client
@@ -109,7 +139,7 @@ async def stream_forward(
                     yield c
 
             await update_key_stats(session, key, True, elapsed_ms, prompt_tokens, completion_tokens)
-            await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, True, None, True, source_ip)
+            await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, True, None, None, True, source_ip)
 
             return generate(), None, status_code, prompt_tokens, completion_tokens
 
@@ -141,19 +171,20 @@ async def non_stream_forward(
         prompt_tokens = 0
         completion_tokens = 0
         error_msg = None
+        error_code = None
 
         try:
             resp_data = resp.json()
             usage = resp_data.get("usage", {})
             prompt_tokens = usage.get("prompt_tokens", 0)
             completion_tokens = usage.get("completion_tokens", 0)
-            if "error" in resp_data:
-                error_msg = resp_data["error"].get("message", str(resp_data["error"]))
+            if status_code >= 400:
+                error_msg, error_code = parse_error_payload(resp.text)
         except Exception:
-            error_msg = resp.text[:500] if status_code >= 400 else None
+            error_msg, error_code = parse_error_payload(resp.text) if status_code >= 400 else (None, None)
 
         await update_key_stats(session, key, success, elapsed_ms, prompt_tokens, completion_tokens)
-        await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, success, error_msg, False, source_ip)
+        await log_request(session, channel.id, key.id, model, prompt_tokens, completion_tokens, elapsed_ms, status_code, success, error_msg, error_code, False, source_ip)
 
         return resp, elapsed_ms, status_code
 
@@ -169,6 +200,7 @@ async def log_request(
     status_code: int,
     is_success: bool,
     error_message: Optional[str],
+    error_code: Optional[str],
     is_streaming: bool,
     source_ip: str,
 ):
@@ -180,6 +212,7 @@ async def log_request(
         completion_tokens=completion_tokens,
         response_time_ms=response_time_ms,
         status_code=status_code,
+        error_code=error_code,
         is_success=is_success,
         error_message=error_message,
         is_streaming=is_streaming,
@@ -276,7 +309,9 @@ async def proxy_request(request: Request, path: str, body: dict):
                         generator, error_body, status_code, s_prompt_tokens, s_completion_tokens = result
                         if generator is None:
                             if status_code == 429:
-                                logger.warning(f"Key {key.id} rate limited (stream), retrying...")
+                                async with get_db_session() as s:
+                                    await set_key_cooldown(s, key.id)
+                                logger.warning(f"Key {key.id} rate limited (stream), cooling down")
                                 continue
                             elif status_code == 401:
                                 async with get_db_session() as s:
@@ -330,7 +365,9 @@ async def proxy_request(request: Request, path: str, body: dict):
                                     await update_api_key_usage(ak_obj, _ns_prompt_tokens, _ns_completion_tokens, usage_session)
                             return JSONResponse(content=resp.json(), status_code=status_code)
                         elif status_code == 429:
-                            logger.warning(f"Key {key.id} rate limited, retrying...")
+                            async with get_db_session() as s:
+                                await set_key_cooldown(s, key.id)
+                            logger.warning(f"Key {key.id} rate limited, cooling down")
                             continue
                         elif status_code >= 500:
                             logger.warning(f"Key {key.id} got {status_code}, retrying...")
@@ -353,7 +390,7 @@ async def proxy_request(request: Request, path: str, body: dict):
                         k = await s.get(Key, key.id)
                         if k:
                             await update_key_stats(s, k, False, timeout_ms)
-                            await log_request(s, channel.id, key.id, model, 0, 0, timeout_ms, 0, False, "timeout", is_stream, source_ip)
+                            await log_request(s, channel.id, key.id, model, 0, 0, timeout_ms, 0, False, "timeout", "timeout", is_stream, source_ip)
                     continue
                 except Exception as e:
                     logger.error(f"Key {key.id} forwarding error: {e}")
@@ -361,7 +398,7 @@ async def proxy_request(request: Request, path: str, body: dict):
                         k = await s.get(Key, key.id)
                         if k:
                             await update_key_stats(s, k, False, 0)
-                            await log_request(s, channel.id, key.id, model, 0, 0, 0, 0, False, str(e), is_stream, source_ip)
+                            await log_request(s, channel.id, key.id, model, 0, 0, 0, 0, False, str(e), e.__class__.__name__, is_stream, source_ip)
                     continue
 
     raise HTTPException(503, f"All keys exhausted after {MAX_RETRY_COUNT} retries")
@@ -416,4 +453,3 @@ async def list_models(request: Request):
 
     models_list = [{"id": m, "object": "model", "owned_by": "keyrouter"} for m in sorted(models_set)]
     return JSONResponse(content={"object": "list", "data": models_list})
-

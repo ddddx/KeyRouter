@@ -55,11 +55,11 @@ export const batchCreateKeys = (data) => api.post('/keys/batch', data).then(r =>
 export const updateKey = (id, data) => api.put(`/keys/${id}`, data).then(r => r.data)
 export const deleteKey = (id) => api.delete(`/keys/${id}`).then(r => r.data)
 export const batchDeleteKeys = (params) => api.delete('/keys/batch', { params }).then(r => r.data)
+export const getKeyStats = (id) => api.get(`/admin/stats/key/${id}`).then(r => r.data)
 
 // ─── Stats ───
 export const getDashboardStats = () => api.get('/admin/stats/dashboard').then(r => r.data)
 export const getChannelStats = (id) => api.get(`/admin/stats/channel/${id}`).then(r => r.data)
-export const getKeyStats = (id) => api.get(`/admin/stats/key/${id}`).then(r => r.data)
 
 // ─── Logs ───
 export const getLogs = (params) => api.get('/admin/logs', { params }).then(r => r.data)
@@ -69,6 +69,7 @@ export const exportLogsCSV = (params) => api.get('/admin/logs/export/csv', { par
 
 // ─── Config ───
 export const getConfig = () => api.get('/admin/config').then(r => r.data)
+export const updateConfig = (data) => api.put('/admin/config', data).then(r => r.data)
 
 // ─── ApiKeys (External Keys) ───
 export const getApiKeys = (params) => api.get('/api-keys/', { params }).then(r => r.data)

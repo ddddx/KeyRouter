@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from database import get_session
 from models import Channel
+from key_manager import recover_expired_cooldowns
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
 
@@ -44,6 +45,7 @@ class ChannelResponse(BaseModel):
 @router.get("", response_model=list[ChannelResponse], include_in_schema=False)
 @router.get("/", response_model=list[ChannelResponse])
 async def list_channels(session: AsyncSession = Depends(get_session)):
+    await recover_expired_cooldowns(session)
     result = await session.execute(select(Channel).order_by(Channel.id))
     channels = result.scalars().all()
     responses = []
@@ -91,6 +93,7 @@ async def get_channel(channel_id: int, session: AsyncSession = Depends(get_sessi
     ch = await session.get(Channel, channel_id)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    await recover_expired_cooldowns(session, channel_id)
     from sqlalchemy import func, select as s2
     from models import Key
     kc = await session.execute(s2(func.count(Key.id)).where(Key.channel_id == ch.id))
@@ -109,6 +112,7 @@ async def update_channel(channel_id: int, data: ChannelUpdate, session: AsyncSes
     ch = await session.get(Channel, channel_id)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    await recover_expired_cooldowns(session, channel_id)
     update_data = data.model_dump(exclude_unset=True)
     for k, v in update_data.items():
         setattr(ch, k, v)

@@ -49,6 +49,10 @@
             <span class="text-gray-400">{{ t('common.active') }}</span>
             <span class="text-green-400 font-bold">{{ stats.active_keys }}</span>
           </div>
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-gray-400">{{ t('common.cooldown') }}</span>
+            <span class="text-yellow-400 font-bold">{{ stats.cooldown_keys || 0 }}</span>
+          </div>
           <div class="flex justify-between items-center">
             <span class="text-gray-400">{{ t('common.error') }}</span>
             <span class="text-red-400 font-bold">{{ stats.error_keys }}</span>

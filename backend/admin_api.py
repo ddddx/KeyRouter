@@ -3,14 +3,21 @@ import io
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, case, extract
+from sqlalchemy import select, func, desc, case
 from typing import Optional
 from datetime import datetime, timedelta
 from database import get_session
 from models import Channel, Key, RequestLog, ApiKey
-from config import HEALTH_CHECK_INTERVAL, HEALTH_CHECK_MAX_ERRORS, MAX_RETRY_COUNT, PORT, HOST, PROXY_URL, LOG_RETENTION_DAYS
+from pydantic import BaseModel, Field
+from config import HEALTH_CHECK_INTERVAL, HEALTH_CHECK_MAX_ERRORS, MAX_RETRY_COUNT, PORT, HOST, PROXY_URL, LOG_RETENTION_DAYS, MIN_KEY_COOLDOWN_SECONDS
+from key_manager import recover_expired_cooldowns
+from settings_store import get_key_cooldown_seconds, set_key_cooldown_seconds
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+class ConfigUpdate(BaseModel):
+    key_cooldown_seconds: Optional[int] = Field(default=None, ge=MIN_KEY_COOLDOWN_SECONDS)
 
 
 def mask_key(val: str) -> str:
@@ -32,6 +39,8 @@ def fmt_time(ts) -> str:
 
 @router.get("/stats/dashboard")
 async def dashboard_stats(session: AsyncSession = Depends(get_session)):
+    await recover_expired_cooldowns(session)
+
     # Basic counts
     total_requests = await session.execute(select(func.count(RequestLog.id)))
     success_requests = await session.execute(
@@ -45,6 +54,7 @@ async def dashboard_stats(session: AsyncSession = Depends(get_session)):
     total_keys = await session.execute(select(func.count(Key.id)))
     active_keys = await session.execute(select(func.count(Key.id)).where(Key.status == "active"))
     error_keys = await session.execute(select(func.count(Key.id)).where(Key.status == "error"))
+    cooldown_keys = await session.execute(select(func.count(Key.id)).where(Key.status == "cooldown"))
 
     avg_response_ms = await session.execute(
         select(func.avg(RequestLog.response_time_ms)).where(RequestLog.is_success == True)
@@ -60,6 +70,7 @@ async def dashboard_stats(session: AsyncSession = Depends(get_session)):
     tk_val = total_keys.scalar() or 0
     ak_val = active_keys.scalar() or 0
     ek_val = error_keys.scalar() or 0
+    ck_val = cooldown_keys.scalar() or 0
     avg_rt_val = round(avg_response_ms.scalar() or 0, 3)
     tp_val = total_prompt_tokens.scalar() or 0
     tc2_val = total_completion_tokens.scalar() or 0
@@ -143,6 +154,7 @@ async def dashboard_stats(session: AsyncSession = Depends(get_session)):
         "total_keys": tk_val,
         "active_keys": ak_val,
         "error_keys": ek_val,
+        "cooldown_keys": ck_val,
         "total_api_keys": tak_val,
         "active_api_keys": aak_val,
         "avg_response_time_ms": avg_rt_val,
@@ -213,6 +225,7 @@ async def channel_stats(channel_id: int, session: AsyncSession = Depends(get_ses
     ch = await session.get(Channel, channel_id)
     if not ch:
         return {"error": "Channel not found"}
+    await recover_expired_cooldowns(session, channel_id)
 
     tr_result = await session.execute(
         select(func.count(RequestLog.id)).where(RequestLog.channel_id == channel_id)
@@ -245,6 +258,9 @@ async def channel_stats(channel_id: int, session: AsyncSession = Depends(get_ses
     error_key_count = await session.execute(
         select(func.count(Key.id)).where(Key.channel_id == channel_id, Key.status == "error")
     )
+    cooldown_key_count = await session.execute(
+        select(func.count(Key.id)).where(Key.channel_id == channel_id, Key.status == "cooldown")
+    )
 
     tr = tr_result.scalar() or 0
     sr = sr_result.scalar() or 0
@@ -271,6 +287,7 @@ async def channel_stats(channel_id: int, session: AsyncSession = Depends(get_ses
             "key_id": k.id,
             "key_masked": mask_key(k.value),
             "status": k.status,
+            "cooldown_until": str(k.cooldown_until) if k.cooldown_until else None,
             "total_requests": k.total_requests,
             "success_requests": k.success_requests,
             "failed_requests": k.failed_requests,
@@ -309,6 +326,7 @@ async def channel_stats(channel_id: int, session: AsyncSession = Depends(get_ses
         "key_count": key_count.scalar() or 0,
         "active_key_count": active_key_count.scalar() or 0,
         "error_key_count": error_key_count.scalar() or 0,
+        "cooldown_key_count": cooldown_key_count.scalar() or 0,
         "key_stats": key_stats,
         "daily_trend": daily_trend,
     }
@@ -321,12 +339,15 @@ async def key_stats(key_id: int, session: AsyncSession = Depends(get_session)):
     k = await session.get(Key, key_id)
     if not k:
         return {"error": "Key not found"}
+    await recover_expired_cooldowns(session, k.channel_id)
+    await session.refresh(k)
 
     return {
         "key_id": key_id,
         "key_masked": mask_key(k.value),
         "channel_id": k.channel_id,
         "status": k.status,
+        "cooldown_until": str(k.cooldown_until) if k.cooldown_until else None,
         "total_requests": k.total_requests,
         "success_requests": k.success_requests,
         "failed_requests": k.failed_requests,
@@ -419,6 +440,7 @@ async def get_logs(
             "status_code": l.status_code,
             "is_success": l.is_success,
             "error_message": l.error_message,
+            "error_code": l.error_code,
             "is_streaming": l.is_streaming,
             "source_ip": l.source_ip,
         })
@@ -477,6 +499,7 @@ async def export_logs_csv(
         "prompt_tokens", "completion_tokens", "total_tokens",
         "response_time_ms", "status_code", "is_success",
         "error_message", "is_streaming", "source_ip",
+        "error_code",
     ])
 
     for l in logs:
@@ -503,6 +526,7 @@ async def export_logs_csv(
             l.error_message or "",
             l.is_streaming,
             l.source_ip or "",
+            l.error_code or "",
         ])
 
     output.seek(0)
@@ -517,7 +541,8 @@ async def export_logs_csv(
 # ─── Config ───
 
 @router.get("/config")
-async def get_config():
+async def get_config(session: AsyncSession = Depends(get_session)):
+    cooldown_seconds = await get_key_cooldown_seconds(session)
     return {
         "host": HOST,
         "port": PORT,
@@ -527,9 +552,21 @@ async def get_config():
         "max_retry_count": MAX_RETRY_COUNT,
         "proxy_url": PROXY_URL,
         "log_retention_days": LOG_RETENTION_DAYS,
+        "key_cooldown_seconds": cooldown_seconds,
+        "key_cooldown_minutes": round(cooldown_seconds / 60, 2),
     }
 
 
 @router.put("/config")
-async def update_config():
-    return {"message": "Configuration is managed via environment variables. See README for details."}
+async def update_config(data: ConfigUpdate, session: AsyncSession = Depends(get_session)):
+    update_data = data.model_dump(exclude_unset=True)
+    if "key_cooldown_seconds" in update_data and update_data["key_cooldown_seconds"] is not None:
+        cooldown_seconds = await set_key_cooldown_seconds(session, update_data["key_cooldown_seconds"])
+    else:
+        cooldown_seconds = await get_key_cooldown_seconds(session)
+
+    return {
+        "message": "Configuration updated",
+        "key_cooldown_seconds": cooldown_seconds,
+        "key_cooldown_minutes": round(cooldown_seconds / 60, 2),
+    }

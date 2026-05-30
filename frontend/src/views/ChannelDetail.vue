@@ -24,7 +24,11 @@
         </div>
         <div>
           <div class="text-gray-400 text-sm">{{ t('channels.keys') }}</div>
-          <div class="text-white text-sm mt-1">{{ keys.length }} {{ t('common.total') }} · {{ keys.filter(k => k.status === 'active').length }} {{ t('common.active') }}</div>
+          <div class="text-white text-sm mt-1">
+            {{ keys.length }} {{ t('common.total') }} ·
+            {{ keys.filter(k => k.status === 'active').length }} {{ t('common.active') }} ·
+            {{ keys.filter(k => k.status === 'cooldown').length }} {{ t('common.cooldown') }}
+          </div>
         </div>
       </div>
     </div>
@@ -107,7 +111,12 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <div class="text-gray-400 text-xs">{{ t('channels.keyCount') }}</div>
-          <div class="text-white">{{ channelStats.key_count }} ({{ channelStats.active_key_count }} {{ t('common.active') }}, {{ channelStats.error_key_count }} {{ t('common.error') }})</div>
+          <div class="text-white">
+            {{ channelStats.key_count }}
+            ({{ channelStats.active_key_count }} {{ t('common.active') }},
+            {{ channelStats.cooldown_key_count || 0 }} {{ t('common.cooldown') }},
+            {{ channelStats.error_key_count }} {{ t('common.error') }})
+          </div>
         </div>
       </div>
     </div>
@@ -146,28 +155,65 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="k in keys" class="border-b border-gray-700/50 hover:bg-gray-700/30">
-              <td class="py-2 px-3 text-gray-300 font-mono text-xs">{{ k.value_masked }}</td>
-              <td class="py-2 px-3">
-                <span :class="statusClass(k.status)" class="px-2 py-0.5 rounded-full text-xs">{{ keyStatusLabel(k.status) }}</span>
-              </td>
-              <td class="py-2 px-3 text-gray-300">{{ k.total_requests }}</td>
-              <td class="py-2 px-3 text-green-400">{{ k.success_requests }}</td>
-              <td class="py-2 px-3 text-red-400">{{ k.failed_requests }}</td>
-              <td class="py-2 px-3">
-                <span :class="k.success_rate >= 95 ? 'text-green-400' : k.success_rate >= 80 ? 'text-yellow-400' : 'text-red-400'">{{ k.success_rate }}%</span>
-              </td>
-              <td class="py-2 px-3 text-gray-300">{{ k.avg_response_time_ms }}ms</td>
-              <td class="py-2 px-3 text-yellow-400">{{ k.total_tokens }}</td>
-              <td class="py-2 px-3 text-gray-400 text-xs">{{ formatTime(k.last_used) }}</td>
-              <td class="py-2 px-3">
-                <div class="flex gap-2">
-                  <button v-if="k.status === 'error'" @click="activateKey(k.id)" class="text-xs px-2 py-1 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30 transition-colors">{{ t('common.active') }}</button>
-                  <button v-if="k.status === 'active'" @click="disableKey(k.id)" class="text-xs px-2 py-1 bg-gray-600/20 text-gray-400 rounded hover:bg-gray-600/30 transition-colors">{{ t('common.disabled') }}</button>
-                  <button @click="deleteKey(k.id)" class="text-xs px-2 py-1 bg-red-600/20 text-red-400 rounded hover:bg-red-600/30 transition-colors">{{ t('common.delete') }}</button>
-                </div>
-              </td>
-            </tr>
+            <template v-for="k in keys" :key="k.id">
+              <tr class="border-b border-gray-700/50 hover:bg-gray-700/30 cursor-pointer" @click="toggleKeyDetails(k.id)">
+                <td class="py-2 px-3 text-gray-300 font-mono text-xs">
+                  <span class="inline-block w-4 text-gray-500">{{ expandedKeyId === k.id ? '▾' : '▸' }}</span>
+                  {{ k.value_masked }}
+                </td>
+                <td class="py-2 px-3">
+                  <span :class="statusClass(k.status)" class="px-2 py-0.5 rounded-full text-xs">{{ keyStatusLabel(k.status) }}</span>
+                </td>
+                <td class="py-2 px-3 text-gray-300">{{ k.total_requests }}</td>
+                <td class="py-2 px-3 text-green-400">{{ k.success_requests }}</td>
+                <td class="py-2 px-3 text-red-400">{{ k.failed_requests }}</td>
+                <td class="py-2 px-3">
+                  <span :class="k.success_rate >= 95 ? 'text-green-400' : k.success_rate >= 80 ? 'text-yellow-400' : 'text-red-400'">{{ k.success_rate }}%</span>
+                </td>
+                <td class="py-2 px-3 text-gray-300">{{ k.avg_response_time_ms }}ms</td>
+                <td class="py-2 px-3 text-yellow-400">{{ k.total_tokens }}</td>
+                <td class="py-2 px-3 text-gray-400 text-xs">{{ formatTime(k.last_used) }}</td>
+                <td class="py-2 px-3" @click.stop>
+                  <div class="flex gap-2">
+                    <button v-if="k.status === 'error' || k.status === 'cooldown'" @click="activateKey(k.id)" class="text-xs px-2 py-1 bg-green-600/20 text-green-400 rounded hover:bg-green-600/30 transition-colors">{{ t('common.active') }}</button>
+                    <button v-if="k.status === 'active'" @click="disableKey(k.id)" class="text-xs px-2 py-1 bg-gray-600/20 text-gray-400 rounded hover:bg-gray-600/30 transition-colors">{{ t('common.disabled') }}</button>
+                    <button @click="deleteKey(k.id)" class="text-xs px-2 py-1 bg-red-600/20 text-red-400 rounded hover:bg-red-600/30 transition-colors">{{ t('common.delete') }}</button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="expandedKeyId === k.id" class="border-b border-gray-700/50 bg-gray-900/40">
+                <td colspan="10" class="px-4 py-4">
+                  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 text-sm">
+                    <div class="space-y-2">
+                      <h4 class="font-semibold text-gray-200">{{ t('channels.lastCall') }}</h4>
+                      <div v-if="!k.last_call" class="text-gray-500">{{ t('channels.noLastCall') }}</div>
+                      <template v-else>
+                        <DetailRow :label="t('logs.time')" :value="formatTime(k.last_call.timestamp)" />
+                        <DetailRow :label="t('logs.model')" :value="k.last_call.model || '-'" />
+                        <DetailRow :label="t('channels.statusCode')" :value="String(k.last_call.status_code ?? '-')" />
+                        <DetailRow :label="t('channels.responseTime')" :value="`${k.last_call.response_time_ms || 0}ms`" />
+                      </template>
+                    </div>
+                    <div class="space-y-2">
+                      <h4 class="font-semibold text-gray-200">{{ t('logs.tokens') }}</h4>
+                      <DetailRow :label="t('channels.promptTokens')" :value="String(k.last_call?.prompt_tokens ?? 0)" />
+                      <DetailRow :label="t('channels.completionTokens')" :value="String(k.last_call?.completion_tokens ?? 0)" />
+                      <DetailRow :label="t('logs.tokens')" :value="String(k.last_call?.total_tokens ?? 0)" />
+                      <DetailRow v-if="k.status === 'cooldown'" :label="t('channels.cooldownUntil')" :value="formatTime(k.cooldown_until)" />
+                    </div>
+                    <div class="space-y-2 min-w-0">
+                      <h4 class="font-semibold text-gray-200">{{ t('channels.errorDetail') }}</h4>
+                      <DetailRow :label="t('channels.errorCode')" :value="k.last_call?.error_code || '-'" />
+                      <DetailRow :label="t('logs.sourceIp')" :value="k.last_call?.source_ip || '-'" />
+                      <div>
+                        <div class="text-xs text-gray-500 mb-1">{{ t('channels.errorDetail') }}</div>
+                        <pre class="whitespace-pre-wrap break-words text-xs text-red-200 bg-red-950/20 border border-red-900/40 rounded-lg p-3 max-h-40 overflow-auto">{{ k.last_call?.error_message || '-' }}</pre>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -189,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { h, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { getChannel, updateChannel, getKeys, batchCreateKeys, updateKey, deleteKey as deleteKeyApi, batchDeleteKeys, getChannelStats } from '../api.js'
 import { strategyLabel, t } from '../i18n.js'
@@ -203,9 +249,24 @@ const editData = ref({ name: '', base_url: '', strategy: '', weight: 1, enabled:
 const showBatchAdd = ref(false)
 const batchKeys = ref('')
 const saving = ref(false)
+const expandedKeyId = ref(null)
+
+const DetailRow = {
+  props: {
+    label: { type: String, required: true },
+    value: { type: [String, Number], default: '-' },
+  },
+  setup(props) {
+    return () => h('div', { class: 'grid grid-cols-[7rem_1fr] gap-2 min-w-0' }, [
+      h('div', { class: 'text-xs text-gray-500' }, props.label),
+      h('div', { class: 'text-xs text-gray-300 break-words min-w-0' }, String(props.value ?? '-')),
+    ])
+  },
+}
 
 function statusClass(status) {
   if (status === 'active') return 'bg-green-600/20 text-green-400'
+  if (status === 'cooldown') return 'bg-yellow-600/20 text-yellow-400'
   if (status === 'error') return 'bg-red-600/20 text-red-400'
   return 'bg-gray-600/20 text-gray-400'
 }
@@ -218,8 +279,13 @@ function formatTime(ts) {
 function keyStatusLabel(status) {
   if (status === 'active') return t('common.active')
   if (status === 'inactive') return t('common.inactive')
+  if (status === 'cooldown') return t('common.cooldown')
   if (status === 'error') return t('common.error')
   return status
+}
+
+function toggleKeyDetails(keyId) {
+  expandedKeyId.value = expandedKeyId.value === keyId ? null : keyId
 }
 
 function normalizeBaseUrl(url) {
