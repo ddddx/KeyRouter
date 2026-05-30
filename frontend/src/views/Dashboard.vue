@@ -1,61 +1,61 @@
 <template>
   <div>
-    <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
-    <div v-if="loading" class="text-gray-400">Loading...</div>
+    <h2 class="text-2xl font-bold mb-6">{{ t('dashboard.title') }}</h2>
+    <div v-if="loading" class="text-gray-400">{{ t('common.loading') }}</div>
     <div v-else>
       <!-- Top stats cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <div class="text-gray-400 text-sm mb-1">Total Requests</div>
+          <div class="text-gray-400 text-sm mb-1">{{ t('dashboard.totalRequests') }}</div>
           <div class="text-3xl font-bold text-white">{{ stats.total_requests }}</div>
-          <div class="text-xs text-gray-500 mt-1">{{ stats.success_requests }} success / {{ stats.failed_requests }} failed</div>
+          <div class="text-xs text-gray-500 mt-1">{{ t('dashboard.successFailed', { success: stats.success_requests, failed: stats.failed_requests }) }}</div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <div class="text-gray-400 text-sm mb-1">Success Rate</div>
+          <div class="text-gray-400 text-sm mb-1">{{ t('dashboard.successRate') }}</div>
           <div class="text-3xl font-bold text-green-400">{{ stats.success_rate }}%</div>
-          <div class="text-xs text-red-400 mt-1">Error rate: {{ stats.error_rate }}%</div>
+          <div class="text-xs text-red-400 mt-1">{{ t('dashboard.errorRate') }}: {{ stats.error_rate }}%</div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <div class="text-gray-400 text-sm mb-1">Avg Response Time</div>
+          <div class="text-gray-400 text-sm mb-1">{{ t('dashboard.avgResponseTime') }}</div>
           <div class="text-3xl font-bold text-indigo-400">{{ stats.avg_response_time_ms }}ms</div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <div class="text-gray-400 text-sm mb-1">Total Tokens</div>
+          <div class="text-gray-400 text-sm mb-1">{{ t('dashboard.totalTokens') }}</div>
           <div class="text-3xl font-bold text-yellow-400">{{ stats.total_tokens }}</div>
-          <div class="text-xs text-gray-500 mt-1">{{ stats.total_prompt_tokens }} prompt / {{ stats.total_completion_tokens }} completion</div>
+          <div class="text-xs text-gray-500 mt-1">{{ t('dashboard.promptCompletion', { prompt: stats.total_prompt_tokens, completion: stats.total_completion_tokens }) }}</div>
         </div>
       </div>
 
       <!-- Channel / Key stats -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <h3 class="text-lg font-semibold mb-3">Channels</h3>
+          <h3 class="text-lg font-semibold mb-3">{{ t('dashboard.channels') }}</h3>
           <div class="flex justify-between items-center mb-2">
-            <span class="text-gray-400">Total</span>
+            <span class="text-gray-400">{{ t('common.total') }}</span>
             <span class="text-white font-bold">{{ stats.total_channels }}</span>
           </div>
           <div class="flex justify-between items-center">
-            <span class="text-gray-400">Active</span>
+            <span class="text-gray-400">{{ t('common.active') }}</span>
             <span class="text-green-400 font-bold">{{ stats.active_channels }}</span>
           </div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <h3 class="text-lg font-semibold mb-3">Keys</h3>
+          <h3 class="text-lg font-semibold mb-3">{{ t('dashboard.keys') }}</h3>
           <div class="flex justify-between items-center mb-2">
-            <span class="text-gray-400">Total</span>
+            <span class="text-gray-400">{{ t('common.total') }}</span>
             <span class="text-white font-bold">{{ stats.total_keys }}</span>
           </div>
           <div class="flex justify-between items-center mb-2">
-            <span class="text-gray-400">Active</span>
+            <span class="text-gray-400">{{ t('common.active') }}</span>
             <span class="text-green-400 font-bold">{{ stats.active_keys }}</span>
           </div>
           <div class="flex justify-between items-center">
-            <span class="text-gray-400">Error</span>
+            <span class="text-gray-400">{{ t('common.error') }}</span>
             <span class="text-red-400 font-bold">{{ stats.error_keys }}</span>
           </div>
         </div>
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-          <h3 class="text-lg font-semibold mb-3">Error Rate</h3>
+          <h3 class="text-lg font-semibold mb-3">{{ t('dashboard.errorRate') }}</h3>
           <div class="flex items-center justify-center h-24">
             <div class="text-5xl font-bold" :class="stats.error_rate > 10 ? 'text-red-400' : stats.error_rate > 5 ? 'text-yellow-400' : 'text-green-400'">
               {{ stats.error_rate }}%
@@ -69,10 +69,10 @@
         <!-- Hourly Trend -->
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <h3 class="text-lg font-semibold">Hourly Trend (48h)</h3>
+            <h3 class="text-lg font-semibold">{{ t('dashboard.hourlyTrend') }}</h3>
             <div class="flex gap-2 text-xs">
-              <span class="text-green-400">● Success</span>
-              <span class="text-red-400">● Failed</span>
+              <span class="text-green-400">● {{ t('common.success') }}</span>
+              <span class="text-red-400">● {{ t('common.failed') }}</span>
             </div>
           </div>
           <div class="h-48 flex items-end gap-px overflow-x-auto" v-if="stats.hourly_trend && stats.hourly_trend.length > 0">
@@ -81,7 +81,7 @@
               <div class="w-full bg-red-500/80 rounded-t" :style="{ height: barHeight(h.failed, maxHourly) + '%' }"></div>
             </div>
           </div>
-          <div v-else class="h-48 flex items-center justify-center text-gray-500 text-sm">No data yet</div>
+          <div v-else class="h-48 flex items-center justify-center text-gray-500 text-sm">{{ t('dashboard.noData') }}</div>
           <div class="flex justify-between text-xs text-gray-500 mt-2" v-if="stats.hourly_trend && stats.hourly_trend.length > 0">
             <span>{{ stats.hourly_trend[0]?.time }}</span>
             <span>{{ stats.hourly_trend[stats.hourly_trend.length - 1]?.time }}</span>
@@ -91,10 +91,10 @@
         <!-- Daily Trend -->
         <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <h3 class="text-lg font-semibold">Daily Trend (30d)</h3>
+            <h3 class="text-lg font-semibold">{{ t('dashboard.dailyTrend') }}</h3>
             <div class="flex gap-2 text-xs">
-              <span class="text-green-400">● Success</span>
-              <span class="text-red-400">● Failed</span>
+              <span class="text-green-400">● {{ t('common.success') }}</span>
+              <span class="text-red-400">● {{ t('common.failed') }}</span>
             </div>
           </div>
           <div class="h-48 flex items-end gap-1 overflow-x-auto" v-if="stats.daily_trend && stats.daily_trend.length > 0">
@@ -103,7 +103,7 @@
               <div class="w-full bg-red-500/80 rounded-t" :style="{ height: barHeight(d.failed, maxDaily) + '%' }"></div>
             </div>
           </div>
-          <div v-else class="h-48 flex items-center justify-center text-gray-500 text-sm">No data yet</div>
+          <div v-else class="h-48 flex items-center justify-center text-gray-500 text-sm">{{ t('dashboard.noData') }}</div>
           <div class="flex justify-between text-xs text-gray-500 mt-2" v-if="stats.daily_trend && stats.daily_trend.length > 0">
             <span>{{ stats.daily_trend[0]?.time }}</span>
             <span>{{ stats.daily_trend[stats.daily_trend.length - 1]?.time }}</span>
@@ -113,18 +113,18 @@
 
       <!-- Model Stats -->
       <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 mb-6" v-if="stats.model_stats && stats.model_stats.length > 0">
-        <h3 class="text-lg font-semibold mb-3">Model Usage Statistics</h3>
+        <h3 class="text-lg font-semibold mb-3">{{ t('dashboard.modelStats') }}</h3>
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-gray-400 border-b border-gray-700">
-                <th class="py-2 px-3 text-left">Model</th>
-                <th class="py-2 px-3 text-left">Requests</th>
-                <th class="py-2 px-3 text-left">Success</th>
-                <th class="py-2 px-3 text-left">Failed</th>
-                <th class="py-2 px-3 text-left">Success Rate</th>
-                <th class="py-2 px-3 text-left">Avg RT</th>
-                <th class="py-2 px-3 text-left">Tokens</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.model') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('channels.requests') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('common.success') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('common.failed') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('dashboard.successRate') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('channels.avgRt') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.tokens') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -146,21 +146,21 @@
 
       <!-- Recent errors -->
       <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-        <h3 class="text-lg font-semibold mb-3">Recent Errors</h3>
+        <h3 class="text-lg font-semibold mb-3">{{ t('dashboard.recentErrors') }}</h3>
         <div v-if="stats.recent_errors && stats.recent_errors.length === 0" class="text-gray-400 text-center py-4">
-          No recent errors ✅
+          {{ t('dashboard.noRecentErrors') }}
         </div>
         <div v-else class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="text-gray-400 border-b border-gray-700">
-                <th class="py-2 px-3 text-left">Time</th>
-                <th class="py-2 px-3 text-left">Channel</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.time') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.channel') }}</th>
                 <th class="py-2 px-3 text-left">Key</th>
-                <th class="py-2 px-3 text-left">Model</th>
-                <th class="py-2 px-3 text-left">Status</th>
-                <th class="py-2 px-3 text-left">Source IP</th>
-                <th class="py-2 px-3 text-left">Error</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.model') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('common.status') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.sourceIp') }}</th>
+                <th class="py-2 px-3 text-left">{{ t('logs.error') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -184,6 +184,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { getDashboardStats } from '../api.js'
+import { t } from '../i18n.js'
 
 const stats = ref({})
 const loading = ref(true)

@@ -1,13 +1,13 @@
 <template>
   <div>
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-      <h1 class="text-2xl font-bold">对外 Key 管理</h1>
+      <h1 class="text-2xl font-bold">{{ t('apiKeys.title') }}</h1>
       <div class="flex flex-wrap gap-3">
         <button @click="showCreateModal = true" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
-          + 创建 Key
+          + {{ t('apiKeys.create') }}
         </button>
         <button @click="showBatchModal = true" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium">
-          + 批量生成
+          + {{ t('apiKeys.batchCreate') }}
         </button>
       </div>
     </div>
@@ -15,14 +15,14 @@
     <!-- Filter -->
     <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-4">
       <select v-model="filterChannel" @change="fetchKeys" class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200">
-        <option value="">全部渠道</option>
-        <option value="none">未绑定渠道</option>
+        <option value="">{{ t('apiKeys.allChannels') }}</option>
+        <option value="none">{{ t('apiKeys.unboundChannel') }}</option>
         <option v-for="ch in channels" :key="ch.id" :value="ch.id">{{ ch.name }}</option>
       </select>
       <select v-model="filterEnabled" @change="fetchKeys" class="bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200">
-        <option value="">全部状态</option>
-        <option value="true">已启用</option>
-        <option value="false">已禁用</option>
+        <option value="">{{ t('apiKeys.allStatus') }}</option>
+        <option value="true">{{ t('apiKeys.enabledOnly') }}</option>
+        <option value="false">{{ t('apiKeys.disabledOnly') }}</option>
       </select>
     </div>
 
@@ -31,15 +31,15 @@
       <table class="w-full min-w-[900px] text-sm">
         <thead class="bg-gray-900 text-gray-400">
           <tr>
-            <th class="px-4 py-3 text-left font-medium">名称</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('apiKeys.name') }}</th>
             <th class="px-4 py-3 text-left font-medium">Key</th>
-            <th class="px-4 py-3 text-left font-medium">绑定渠道</th>
-            <th class="px-4 py-3 text-left font-medium">状态</th>
-            <th class="px-4 py-3 text-left font-medium">限速 (req/min)</th>
-            <th class="px-4 py-3 text-left font-medium">额度</th>
-            <th class="px-4 py-3 text-left font-medium">请求次数</th>
-            <th class="px-4 py-3 text-left font-medium">过期时间</th>
-            <th class="px-4 py-3 text-left font-medium">操作</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('apiKeys.boundChannel') }}</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('common.status') }}</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('apiKeys.rateLimit') }}</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('apiKeys.quota') }}</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('apiKeys.requests') }}</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('apiKeys.expiresAt') }}</th>
+            <th class="px-4 py-3 text-left font-medium">{{ t('common.actions') }}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-700">
@@ -48,36 +48,36 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-xs font-mono">{{ ak.value_masked }}</span>
-                <button @click="copyKey(ak.value)" class="text-gray-500 hover:text-indigo-400 transition-colors" title="复制完整Key">
+                <button @click="copyKey(ak.value)" class="text-gray-500 hover:text-indigo-400 transition-colors" :title="t('apiKeys.copyFull')">
                   📋
                 </button>
               </div>
             </td>
-            <td class="px-4 py-3 text-gray-300">{{ ak.channel_name || '自动匹配' }}</td>
+            <td class="px-4 py-3 text-gray-300">{{ ak.channel_name || t('apiKeys.autoMatch') }}</td>
             <td class="px-4 py-3">
               <span :class="statusBadge(ak.status)">{{ statusLabel(ak.status) }}</span>
             </td>
-            <td class="px-4 py-3 text-gray-300">{{ ak.rate_limit || '不限' }}</td>
+            <td class="px-4 py-3 text-gray-300">{{ ak.rate_limit || t('common.unlimited') }}</td>
             <td class="px-4 py-3 text-gray-300">
               <span v-if="ak.total_quota !== null">
                 {{ formatMoney(ak.used_quota) }} / {{ formatMoney(ak.total_quota) }}
                 <span class="text-xs text-gray-500">({{ quotaPercent(ak) }}%)</span>
               </span>
-              <span v-else class="text-gray-500">不限</span>
+              <span v-else class="text-gray-500">{{ t('common.unlimited') }}</span>
             </td>
             <td class="px-4 py-3 text-gray-300">{{ ak.total_requests }}</td>
-            <td class="px-4 py-3 text-gray-300">{{ ak.expires_at ? formatDate(ak.expires_at) : '永不过期' }}</td>
+            <td class="px-4 py-3 text-gray-300">{{ ak.expires_at ? formatDate(ak.expires_at) : t('common.never') }}</td>
             <td class="px-4 py-3">
               <div class="flex gap-2">
-                <button @click="toggleEnabled(ak)" :class="ak.enabled ? 'text-yellow-500 hover:text-yellow-400' : 'text-green-500 hover:text-green-400'" :title="ak.enabled ? '禁用' : '启用'">
+                <button @click="toggleEnabled(ak)" :class="ak.enabled ? 'text-yellow-500 hover:text-yellow-400' : 'text-green-500 hover:text-green-400'" :title="ak.enabled ? t('apiKeys.disableTitle') : t('apiKeys.enableTitle')">
                   {{ ak.enabled ? '🔒' : '🔓' }}
                 </button>
-                <button @click="deleteKey(ak)" class="text-red-500 hover:text-red-400" title="删除">🗑️</button>
+                <button @click="deleteKey(ak)" class="text-red-500 hover:text-red-400" :title="t('apiKeys.deleteTitle')">🗑️</button>
               </div>
             </td>
           </tr>
           <tr v-if="apiKeys.length === 0">
-            <td colspan="9" class="px-4 py-8 text-center text-gray-500">暂无对外 Key，点击上方按钮创建</td>
+            <td colspan="9" class="px-4 py-8 text-center text-gray-500">{{ t('apiKeys.empty') }}</td>
           </tr>
         </tbody>
       </table>
@@ -86,40 +86,40 @@
     <!-- Create Modal -->
     <div v-if="showCreateModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showCreateModal = false">
       <div class="bg-gray-800 rounded-xl border border-gray-600 p-6 w-[calc(100vw-2rem)] max-w-md">
-        <h2 class="text-lg font-bold mb-4">创建对外 Key</h2>
+        <h2 class="text-lg font-bold mb-4">{{ t('apiKeys.createTitle') }}</h2>
         <div class="space-y-3">
           <div>
-            <label class="block text-sm text-gray-400 mb-1">备注名称</label>
-            <input v-model="createForm.name" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="可选" />
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.noteName') }}</label>
+            <input v-model="createForm.name" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" :placeholder="t('common.optional')" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">绑定渠道</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.boundChannel') }}</label>
             <select v-model="createForm.channel_id" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200">
-              <option value="">自动匹配（根据 model 选择渠道）</option>
+              <option value="">{{ t('apiKeys.autoMatchByModel') }}</option>
               <option v-for="ch in channels" :key="ch.id" :value="ch.id">{{ ch.name }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">限速 (req/min)</label>
-            <input v-model="createForm.rate_limit" type="number" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="不限" />
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.rateLimit') }}</label>
+            <input v-model="createForm.rate_limit" type="number" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" :placeholder="t('common.unlimited')" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">总额度 ($)</label>
-            <input v-model="createForm.total_quota" type="number" step="0.01" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="不限" />
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.totalQuota') }}</label>
+            <input v-model="createForm.total_quota" type="number" step="0.01" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" :placeholder="t('common.unlimited')" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">过期时间</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.expiresAt') }}</label>
             <input v-model="createForm.expires_at" type="datetime-local" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">自定义 Key 前缀</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.prefix') }}</label>
             <input v-model="createForm.prefix" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="sk-keyrouter-" />
           </div>
         </div>
         <div class="flex justify-end gap-3 mt-6">
-          <button @click="showCreateModal = false" class="px-4 py-2 text-gray-400 hover:text-gray-200 text-sm">取消</button>
+          <button @click="showCreateModal = false" class="px-4 py-2 text-gray-400 hover:text-gray-200 text-sm">{{ t('common.cancel') }}</button>
           <button @click="createSingleKey" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium" :disabled="creating">
-            {{ creating ? '创建中...' : '创建' }}
+            {{ creating ? t('common.creating') : t('common.create') }}
           </button>
         </div>
       </div>
@@ -128,44 +128,44 @@
     <!-- Batch Create Modal -->
     <div v-if="showBatchModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showBatchModal = false">
       <div class="bg-gray-800 rounded-xl border border-gray-600 p-6 w-[calc(100vw-2rem)] max-w-md">
-        <h2 class="text-lg font-bold mb-4">批量生成对外 Key</h2>
+        <h2 class="text-lg font-bold mb-4">{{ t('apiKeys.batchTitle') }}</h2>
         <div class="space-y-3">
           <div>
-            <label class="block text-sm text-gray-400 mb-1">数量 (1-100)</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.count') }}</label>
             <input v-model="batchForm.count" type="number" min="1" max="100" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">名称前缀</label>
-            <input v-model="batchForm.name_prefix" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="可选，如 test- → test-1, test-2, ..." />
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.namePrefix') }}</label>
+            <input v-model="batchForm.name_prefix" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" :placeholder="t('apiKeys.namePrefixPlaceholder')" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">绑定渠道</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.boundChannel') }}</label>
             <select v-model="batchForm.channel_id" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200">
-              <option value="">自动匹配</option>
+              <option value="">{{ t('apiKeys.autoMatch') }}</option>
               <option v-for="ch in channels" :key="ch.id" :value="ch.id">{{ ch.name }}</option>
             </select>
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">限速 (req/min)</label>
-            <input v-model="batchForm.rate_limit" type="number" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="不限" />
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.rateLimit') }}</label>
+            <input v-model="batchForm.rate_limit" type="number" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" :placeholder="t('common.unlimited')" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">总额度 ($)</label>
-            <input v-model="batchForm.total_quota" type="number" step="0.01" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="不限" />
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.totalQuota') }}</label>
+            <input v-model="batchForm.total_quota" type="number" step="0.01" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" :placeholder="t('common.unlimited')" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">过期时间</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.expiresAt') }}</label>
             <input v-model="batchForm.expires_at" type="datetime-local" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" />
           </div>
           <div>
-            <label class="block text-sm text-gray-400 mb-1">自定义 Key 前缀</label>
+            <label class="block text-sm text-gray-400 mb-1">{{ t('apiKeys.prefix') }}</label>
             <input v-model="batchForm.prefix" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-gray-200" placeholder="sk-keyrouter-" />
           </div>
         </div>
         <div class="flex justify-end gap-3 mt-6">
-          <button @click="showBatchModal = false" class="px-4 py-2 text-gray-400 hover:text-gray-200 text-sm">取消</button>
+          <button @click="showBatchModal = false" class="px-4 py-2 text-gray-400 hover:text-gray-200 text-sm">{{ t('common.cancel') }}</button>
           <button @click="batchCreateKeys" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium" :disabled="creating">
-            {{ creating ? '生成中...' : '批量生成' }}
+            {{ creating ? t('common.creating') : t('apiKeys.batchCreate') }}
           </button>
         </div>
       </div>
@@ -173,7 +173,7 @@
 
     <!-- Copy toast -->
     <div v-if="copyToast" class="fixed top-4 right-4 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm z-50 shadow-lg">
-      ✅ Key 已复制到剪贴板
+      {{ t('apiKeys.copied') }}
     </div>
   </div>
 </template>
@@ -181,6 +181,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { getChannels, getApiKeys, createApiKey, batchCreateApiKeys, updateApiKey, deleteApiKey } from '../api.js'
+import { apiKeyStatusLabel, t } from '../i18n.js'
 
 const apiKeys = ref([])
 const channels = ref([])
@@ -262,7 +263,7 @@ async function createSingleKey() {
     createForm.value = { name: '', channel_id: '', rate_limit: null, total_quota: null, expires_at: '', prefix: '' }
     await fetchKeys()
   } catch (e) {
-    alert('创建失败: ' + (e.response?.data?.detail || e.message))
+    alert(t('apiKeys.createFailed', { message: e.response?.data?.detail || e.message }))
   } finally {
     creating.value = false
   }
@@ -281,12 +282,12 @@ async function batchCreateKeys() {
       prefix: batchForm.value.prefix || null,
     }
     const results = await batchCreateApiKeys(data)
-    alert(`成功生成 ${results.length} 个对外 Key`)
+    alert(t('apiKeys.generated', { count: results.length }))
     showBatchModal.value = false
     batchForm.value = { count: 5, name_prefix: '', channel_id: '', rate_limit: null, total_quota: null, expires_at: '', prefix: '' }
     await fetchKeys()
   } catch (e) {
-    alert('批量生成失败: ' + (e.response?.data?.detail || e.message))
+    alert(t('apiKeys.batchFailed', { message: e.response?.data?.detail || e.message }))
   } finally {
     creating.value = false
   }
@@ -297,17 +298,17 @@ async function toggleEnabled(ak) {
     await updateApiKey(ak.id, { enabled: !ak.enabled })
     await fetchKeys()
   } catch (e) {
-    alert('操作失败: ' + (e.response?.data?.detail || e.message))
+    alert(t('common.operationFailed', { message: e.response?.data?.detail || e.message }))
   }
 }
 
 async function deleteKey(ak) {
-  if (!confirm(`确定删除对外 Key "${ak.name || ak.value_masked}"？此操作不可恢复。`)) return
+  if (!confirm(t('apiKeys.deleteConfirm', { name: ak.name || ak.value_masked }))) return
   try {
     await deleteApiKey(ak.id)
     await fetchKeys()
   } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.detail || e.message))
+    alert(t('apiKeys.deleteFailed', { message: e.response?.data?.detail || e.message }))
   }
 }
 
@@ -342,8 +343,7 @@ function statusBadge(status) {
 }
 
 function statusLabel(status) {
-  const map = { active: '✅ 可用', disabled: '🔒 禁用', expired: '⏰ 过期', exhausted: '🚫 额度耗尽' }
-  return map[status] || status
+  return apiKeyStatusLabel(status)
 }
 
 function quotaPercent(ak) {
